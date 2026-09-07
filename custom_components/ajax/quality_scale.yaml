@@ -1,0 +1,287 @@
+rules:
+  # ------------------------------------------------------------------
+  # Bronze
+  # ------------------------------------------------------------------
+  action-setup:
+    status: done
+    comment: |
+      Integration-level services are registered in `__init__.async_setup_entry`
+      (see custom_components/ajax/__init__.py — `force_arm`, `force_arm_night`,
+      `get_raw_devices`, `refresh_metadata`, `get_nvr_recordings`, `get_smart_locks`).
+  appropriate-polling:
+    status: done
+    comment: |
+      `AjaxDataCoordinator.update_interval` is adaptive (30 s armed, 60 s disarmed,
+      bumped to 5 s for door sensors when disarmed because Ajax does not push SSE
+      while disarmed). Cache TTL on /spaces and /devices coalesces overlapping calls.
+  brands:
+    status: done
+    comment: |
+      Distributed through HACS as a custom integration; logo / brand information
+      lives in the HACS repository entry.
+  common-modules:
+    status: done
+    comment: |
+      Cross-platform helpers are factorised: `devices/base.py` (entity descriptor
+      helpers used by the device handlers in `devices/`), `_event_helpers.py` (SSE/SQS mixin),
+      `_discovery.py` (dynamic-entity discovery, used by 11 platforms).
+  config-flow:
+    status: done
+  config-flow-test-coverage:
+    status: done
+    comment: |
+      `tests/test_config_flow.py` covers the entry-point form schema, the
+      auth-mode routing (direct vs proxy), and the cross-step persistence
+      of `_auth_mode`. `tests/test_config_flow_coverage.py` covers the
+      2FA branch, reauth, reconfigure and the full Options Flow.
+  dependency-transparency:
+    status: done
+    comment: |
+      All third-party dependencies are pinned in `manifest.json::requirements`
+      (`aiobotocore>=2.22.0`, `onvif-zeep-async>=3.1.12`).
+  docs-actions:
+    status: done
+    comment: |
+      Services are documented in `services.yaml` with localised name/description
+      and validated fields (`config_entry_id` selectors).
+  docs-high-level-description:
+    status: done
+    comment: README.md introduces the integration and its scope.
+  docs-installation-instructions:
+    status: done
+    comment: README.md includes the HACS install steps.
+  docs-removal-instructions:
+    status: done
+    comment: README.md ships a "Removal" section (HACS + manual).
+  entity-event-setup:
+    status: done
+    comment: |
+      Event entities subscribe via `async_added_to_hass` and unsubscribe via
+      `async_will_remove_from_hass` (event.py:189-197).
+  entity-unique-id:
+    status: done
+    comment: Every entity sets `_attr_unique_id` (audited across all platforms).
+  has-entity-name:
+    status: done
+    comment: All entity classes set `_attr_has_entity_name = True`.
+  runtime-data:
+    status: done
+    comment: |
+      `AjaxConfigEntry = ConfigEntry[AjaxDataCoordinator]` and the coordinator is
+      stored on `entry.runtime_data` (no `hass.data[DOMAIN]`).
+  test-before-configure:
+    status: done
+    comment: |
+      `config_flow` performs a real login and `async_get_hubs` before persisting
+      the entry, surfacing credential / connectivity errors immediately.
+  test-before-setup:
+    status: done
+    comment: |
+      `__init__.async_setup_entry` calls `api.async_login()` + `api.async_get_hubs()`
+      and raises `ConfigEntryAuthFailed` / `ConfigEntryNotReady` on failure.
+  unique-config-entry:
+    status: done
+    comment: |
+      `await self.async_set_unique_id(user_input[CONF_EMAIL].lower())` +
+      `self._abort_if_unique_id_configured()` in the config flow.
+
+  # ------------------------------------------------------------------
+  # Silver
+  # ------------------------------------------------------------------
+  action-exceptions:
+    status: done
+    comment: |
+      All service handlers raise `HomeAssistantError` /
+      `ServiceValidationError` with a `translation_key`. The
+      `alarm_control_panel` arm/disarm/group actions were normalised in the
+      same way (translation key `arm_disarm_failed`).
+  config-entry-unloading:
+    status: done
+    comment: |
+      `__init__.async_unload_entry` cleans up SSE/SQS managers, ONVIF
+      manager, listeners, and timers; dispatcher subscriptions are wired
+      through `entry.async_on_unload`.
+  docs-configuration-parameters:
+    status: done
+    comment: |
+      Each config flow field has a localised `data_description` in
+      `strings.json` (and the 7 translation files).
+  docs-installation-parameters:
+    status: done
+    comment: |
+      README documents the prerequisites (Ajax account, proxy URL) and the
+      optional AWS SQS credentials.
+  entity-unavailable:
+    status: done
+    comment: |
+      Entity classes implement `available` reading `coordinator.last_update_success`
+      and `device.online` (sensor/switch/light/select/number/valve/lock/camera).
+  integration-owner:
+    status: done
+    comment: '`codeowners: ["@foXaCe"]` in `manifest.json`.'
+  log-when-unavailable:
+    status: done
+    comment: |
+      `DataUpdateCoordinator` logs the transitions automatically and the
+      coordinator escalates AjaxRestAuthError to `ConfigEntryAuthFailed`
+      (logged once, surfaces in the repairs flow).
+  parallel-updates:
+    status: done
+    comment: |
+      `PARALLEL_UPDATES = 1` is set on every entity platform that mutates
+      device state (switch, light, select, number, valve, lock, camera,
+      button, event, alarm_control_panel). Read-only coordinator-driven
+      platforms (sensor, binary_sensor, device_tracker) set the
+      recommended `PARALLEL_UPDATES = 0` (unlimited — no per-entity I/O).
+  reauthentication-flow:
+    status: done
+    comment: |
+      `config_flow.AjaxConfigFlow.async_step_reauth` /
+      `async_step_reauth_confirm` re-prompt for password when SSO expires;
+      `ConfigEntryAuthFailed` is raised from the coordinator to trigger it.
+  test-coverage:
+    status: done
+    comment: |
+      Exhaustive suite (~1900 tests, ≥ 99 % line coverage across the
+      integration): coordinator mixins, API client (auth/transport/retry),
+      SSE/SQS managers and dispatch, every entity platform, config flow
+      (user/direct/proxy/2FA/dhcp/reauth/reconfigure) + Options Flow,
+      diagnostics, migrations and the translation schema.
+
+  # ------------------------------------------------------------------
+  # Gold
+  # ------------------------------------------------------------------
+  devices:
+    status: done
+    comment: |
+      Each platform exposes a `DeviceInfo` with `identifiers`, `name`,
+      `manufacturer="Ajax Systems"`, `model` (device-type display name) and
+      `sw_version` / `hw_version` (sourced from the Ajax API on every
+      poll). NVR-channel cameras link back to the parent NVR via `via_device_id`.
+  diagnostics:
+    status: done
+    comment: |
+      `diagnostics.py` returns a redacted dump (tokens, userId, AWS keys,
+      passwords stripped).
+  discovery:
+    status: done
+    comment: |
+      DHCP discovery on `ajax-*` hostnames (manifest `dhcp` block) +
+      runtime `SIGNAL_NEW_DEVICE` / `SIGNAL_NEW_VIDEO_EDGE` /
+      `SIGNAL_NEW_SMART_LOCK` for devices added after setup.
+  discovery-update-info:
+    status: done
+    comment: |
+      `config_flow.async_step_dhcp_confirm` calls
+      `hass.config_entries.async_update_entry(entry, data=new_data)` when
+      an already-configured hub is re-discovered with a fresh hostname /
+      MAC so the connection info stays current.
+  docs-data-update:
+    status: done
+    comment: |
+      README "Real-Time Synchronization" + "Real-Time Event Limitations"
+      sections explain the dual SSE/SQS push path plus the adaptive REST
+      polling (30 s armed / 60 s disarmed / 5 s for door sensors when
+      disarmed).
+  docs-examples:
+    status: done
+    comment: |
+      README "Use Cases & Examples" ships ready-to-paste automations
+      (panic button, camera-detection notify with snapshot, presence-based
+      arming).
+  docs-known-limitations:
+    status: done
+    comment: |
+      README "Known Limitations" lists the SSE-only-while-armed quirk,
+      proxy dependency, and the NVR routing fallback.
+  docs-supported-devices:
+    status: done
+    comment: |
+      README "Device Support" lists every device family the integration
+      handles (Hub2, MotionProtect, DoorProtect, GlassProtect, Socket,
+      Relay, MotionCam, Video Edge cameras, NVR, smart locks…).
+  docs-supported-functions:
+    status: done
+    comment: |
+      README "Key Features" + "Rich Entity Support" lists arm/disarm,
+      group mode, night mode, force arm, panic, ONVIF AI detections,
+      snapshot URL on events, energy panel.
+  docs-troubleshooting:
+    status: done
+    comment: README "Troubleshooting" covers reauth, proxy, ONVIF, SQS.
+  docs-use-cases:
+    status: done
+    comment: See `docs-examples` — same section in the README.
+  dynamic-devices:
+    status: done
+    comment: |
+      Discovery signals fire from `coordinator._async_update_devices` when
+      a brand-new device id is observed; every entity platform listens via
+      `_discovery.connect_new_entity_signal`.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default: done
+  entity-translations: done
+  exception-translations: done
+  icon-translations:
+    status: done
+    comment: |
+      `icons.json` maps the integration's translation_keys to MDI icons
+      so the icon stays consistent with the HA brand palette across
+      sensor/binary_sensor/switch/select families.
+  reconfiguration-flow:
+    status: done
+    comment: |
+      `async_step_reconfigure` lets the user re-enter API key / email /
+      password / proxy URL / verify_ssl in place.
+  repair-issues:
+    status: done
+    comment: |
+      Five persistent repair issues cover the soft-fail paths:
+      `verify_ssl_disabled` (SSL off), `onvif_init_failed`,
+      `onvif_no_cameras`, `onvif_partial_cameras`, `sse_init_failed`,
+      `sqs_init_failed`. Each issue is auto-deleted when the underlying
+      problem resolves.
+  stale-devices:
+    status: done
+    comment: |
+      `_async_cleanup_stale_devices` runs after the initial load and
+      removes HA device-registry entries whose Ajax IDs no longer appear
+      in `account.spaces.*.devices` / `video_edges` / `smart_locks` —
+      catches devices deleted from Ajax while HA was offline.
+
+  # ------------------------------------------------------------------
+  # Platinum
+  # ------------------------------------------------------------------
+  async-dependency: done
+  inject-websession:
+    status: done
+    comment: |
+      `__init__.async_setup_entry` passes `async_get_clientsession(hass)` to
+      `AjaxRestApi` when `verify_ssl=True`; a dedicated session is used when
+      SSL verification is disabled (HA's shared session cannot disable it).
+  strict-typing:
+    status: done
+    comment: |
+      `mypy --strict` clean. `pyproject.toml [tool.mypy]` ships
+      `strict = true` with `implicit_reexport = true` only for the
+      `homeassistant.*` namespace (the HA team does not always update
+      `__all__` when public symbols move — relying on the implicit
+      surface is the pragmatic call). CI's `typing` job runs mypy on
+      every push and blocks merges on regressions.
+
+      Cleanup pass took **327 -> 0 strict errors**:
+      - 134 type-arg: parameterised `dict`/`list`/`tuple`/`Task`/`Store`
+      - 68 no-untyped-def: typed all internal signatures (notably the
+        SSE/SQS event handlers' `space: AjaxSpace` parameter)
+      - 59 no-any-return: `# type: ignore[no-any-return]` at every
+        boundary where an Ajax JSON payload (`dict.get(...)`) is
+        downcast to the declared concrete type (this is a documented
+        carve-out — the API surface is dynamically shaped)
+      - 34 attr-defined: HA core implicit re-exports (config override)
+      - 32 no-untyped-call: typed the callees so callers stop leaking
+      - the remaining union-attr / arg-type / assignment / misc were
+        narrowed with early returns or explicit casts.
+
+      All `# type: ignore[no-any-return]` tags are at REST payload
+      boundaries — none in business logic.

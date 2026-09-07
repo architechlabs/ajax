@@ -1,0 +1,55 @@
+ci:
+  autoupdate_schedule: weekly
+  autoupdate_commit_msg: "build: pre-commit autoupdate"
+  autofix_commit_msg: "style: pre-commit auto-fix"
+  autofix_prs: true
+  skip: [mypy]
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.5
+    hooks:
+      - id: ruff-check
+        args: [ --fix ]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+        - id: trailing-whitespace
+        - id: end-of-file-fixer
+        - id: check-json
+          exclude: (.vscode|.devcontainer)
+        - id: pretty-format-json
+          args: ['--autofix', '--no-ensure-ascii']
+          files: (icons.json|translations/.+\.json$)
+        - id: check-yaml
+          args: ['--unsafe']
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        args: ["--skip", "*.json,*.yaml,*.yml"]
+
+  - repo: local
+    hooks:
+      - id: remove-co-authored-by
+        name: Remove Co-Authored-By Claude
+        entry: sed -i '/Co-Authored-By:.*[Cc]laude/d'
+        language: system
+        stages: [commit-msg]
+
+      - id: mypy
+        name: mypy (strict, mirrors CI gate)
+        entry: mypy custom_components/ajax/
+        language: system
+        pass_filenames: false
+        stages: [pre-push]

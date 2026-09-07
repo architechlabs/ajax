@@ -1,0 +1,35 @@
+{
+  "domain": "ajax",
+  "name": "Ajax Security System (Direct API Hardened)",
+  "codeowners": [
+    "@foXaCe"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "ffmpeg",
+    "logbook"
+  ],
+  "dhcp": [
+    {
+      "hostname": "ajax-*",
+      "macaddress": "9C756E*"
+    },
+    {
+      "hostname": "ajax-*",
+      "macaddress": "38B8EB*"
+    }
+  ],
+  "documentation": "https://github.com/foXaCe/ajax-security-hass",
+  "integration_type": "hub",
+  "iot_class": "cloud_polling",
+  "issue_tracker": "https://github.com/foXaCe/ajax-security-hass/issues",
+  "loggers": [
+    "custom_components.ajax"
+  ],
+  "quality_scale": "platinum",
+  "requirements": [
+    "onvif-zeep-async>=4.2.1",
+    "pyotp>=2.10.0"
+  ],
+  "version": "0.37.5"
+}

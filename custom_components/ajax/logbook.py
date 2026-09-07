@@ -1,0 +1,311 @@
+"""Logbook integration for Ajax Security System."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from homeassistant.components.logbook import LOGBOOK_ENTRY_ICON, LOGBOOK_ENTRY_MESSAGE, LOGBOOK_ENTRY_NAME
+from homeassistant.core import Event, HomeAssistant, callback
+
+from .const import (
+    DOMAIN,
+    EVENT_AJAX_ARMED,
+    EVENT_AJAX_ARMED_HOME,
+    EVENT_AJAX_ARMED_NIGHT,
+    EVENT_AJAX_BUTTON_PRESSED,
+    EVENT_AJAX_CAMERA_DETECTION,
+    EVENT_AJAX_DISARMED,
+    EVENT_AJAX_DOORBELL_RING,
+    EVENT_AJAX_SCENARIO_TRIGGERED,
+    EVENT_AJAX_SECURITY_STATE_CHANGED,
+    EVENT_AJAX_SMART_LOCK_DOORBELL,
+)
+
+# Minimal translation table keyed by HA language (2-letter code).
+# We keep it inline here because Home Assistant's logbook API does not
+# support translation_key; describe callbacks must return the final
+# strings themselves.
+_MESSAGES: dict[str, dict[str, str]] = {
+    "armed": {
+        "en": "armed",
+        "fr": "armé",
+        "es": "armado",
+        "de": "scharf",
+        "nl": "ingeschakeld",
+        "sv": "tillkopplat",
+        "uk": "під охороною",
+    },
+    "disarmed": {
+        "en": "disarmed",
+        "fr": "désarmé",
+        "es": "desarmado",
+        "de": "unscharf",
+        "nl": "uitgeschakeld",
+        "sv": "frånkopplat",
+        "uk": "знято з охорони",
+    },
+    "armed_night": {
+        "en": "armed (night mode)",
+        "fr": "armé (mode nuit)",
+        "es": "armado (modo nocturno)",
+        "de": "scharf (Nachtmodus)",
+        "nl": "ingeschakeld (nachtmodus)",
+        "sv": "tillkopplat (nattläge)",
+        "uk": "під охороною (нічний режим)",
+    },
+    "armed_home": {
+        "en": "armed (home)",
+        "fr": "armé (présence)",
+        "es": "armado (hogar)",
+        "de": "scharf (zuhause)",
+        "nl": "ingeschakeld (thuis)",
+        "sv": "tillkopplat (hemma)",
+        "uk": "під охороною (вдома)",
+    },
+    "rang": {
+        "en": "rang",
+        "fr": "a sonné",
+        "es": "sonó",
+        "de": "geklingelt",
+        "nl": "gerinkeld",
+        "sv": "ringde",
+        "uk": "подзвонив",
+    },
+    "state_changed": {
+        "en": "changed from {old} to {new}",
+        "fr": "changé de {old} à {new}",
+        "es": "cambiado de {old} a {new}",
+        "de": "gewechselt von {old} zu {new}",
+        "nl": "gewijzigd van {old} naar {new}",
+        "sv": "ändrat från {old} till {new}",
+        "uk": "змінено з {old} на {new}",
+    },
+    "triggered_on": {
+        "en": "triggered on {target}",
+        "fr": "déclenché sur {target}",
+        "es": "activado en {target}",
+        "de": "ausgelöst auf {target}",
+        "nl": "geactiveerd op {target}",
+        "sv": "utlöst på {target}",
+        "uk": "спрацювало на {target}",
+    },
+    "triggered": {
+        "en": "triggered",
+        "fr": "déclenché",
+        "es": "activado",
+        "de": "ausgelöst",
+        "nl": "geactiveerd",
+        "sv": "utlöst",
+        "uk": "спрацювало",
+    },
+    "detected": {
+        "en": "detected {what}",
+        "fr": "a détecté {what}",
+        "es": "detectó {what}",
+        "de": "hat {what} erkannt",
+        "nl": "heeft {what} gedetecteerd",
+        "sv": "upptäckte {what}",
+        "uk": "виявлено {what}",
+    },
+    "by": {
+        "en": "by {source}",
+        "fr": "par {source}",
+        "es": "por {source}",
+        "de": "von {source}",
+        "nl": "door {source}",
+        "sv": "av {source}",
+        "uk": "від {source}",
+    },
+}
+
+# Per-language label for each ONVIF/cloud video detection type, used by
+# the camera-detection logbook describer below.
+_DETECTION_LABELS: dict[str, dict[str, str]] = {
+    "motion": {
+        "en": "motion",
+        "fr": "un mouvement",
+        "es": "movimiento",
+        "de": "Bewegung",
+        "nl": "beweging",
+        "sv": "rörelse",
+        "uk": "рух",
+    },
+    "human": {
+        "en": "a person",
+        "fr": "une personne",
+        "es": "una persona",
+        "de": "eine Person",
+        "nl": "een persoon",
+        "sv": "en person",
+        "uk": "людину",
+    },
+    "vehicle": {
+        "en": "a vehicle",
+        "fr": "un véhicule",
+        "es": "un vehículo",
+        "de": "ein Fahrzeug",
+        "nl": "een voertuig",
+        "sv": "ett fordon",
+        "uk": "транспортний засіб",
+    },
+    "pet": {
+        "en": "an animal",
+        "fr": "un animal",
+        "es": "un animal",
+        "de": "ein Tier",
+        "nl": "een dier",
+        "sv": "ett djur",
+        "uk": "тварину",
+    },
+    "line_crossing": {
+        "en": "a line crossing",
+        "fr": "un franchissement de ligne",
+        "es": "un cruce de línea",
+        "de": "Linienüberschreitung",
+        "nl": "een lijnoverschrijding",
+        "sv": "linjeöverträdelse",
+        "uk": "перетин лінії",
+    },
+}
+
+
+def _detection_label(hass: HomeAssistant, event_type: str) -> str:
+    """Return the localised label for a video detection ``event_type``."""
+    lang = (hass.config.language or "en")[:2]
+    table = _DETECTION_LABELS.get(event_type, {})
+    return table.get(lang) or table.get("en") or event_type
+
+
+def _tr(hass: HomeAssistant, key: str, **kwargs: str) -> str:
+    """Return the message ``key`` in the user's HA language."""
+    lang = (hass.config.language or "en")[:2]
+    table = _MESSAGES.get(key, {})
+    template = table.get(lang) or table.get("en") or key
+    if kwargs:
+        try:
+            return template.format(**kwargs)
+        except KeyError:
+            return template
+    return template
+
+
+@callback
+def async_describe_events(
+    hass: HomeAssistant,
+    async_describe_event: Callable[[str, str, Callable[[Event], dict[str, str]]], None],
+) -> None:
+    """Describe logbook events."""
+
+    def _with_source(message: str, event: Event) -> str:
+        """Append ``by <source>`` to ``message`` when the event carries one."""
+        source = event.data.get("source_name")
+        if not source:
+            return message
+        return f"{message} {_tr(hass, 'by', source=source)}"
+
+    @callback
+    def async_describe_armed(event: Event) -> dict[str, str]:
+        space = event.data.get("space_name", "Ajax")
+        return {
+            LOGBOOK_ENTRY_NAME: space,
+            LOGBOOK_ENTRY_MESSAGE: _with_source(_tr(hass, "armed"), event),
+            LOGBOOK_ENTRY_ICON: "mdi:shield-lock",
+        }
+
+    @callback
+    def async_describe_disarmed(event: Event) -> dict[str, str]:
+        space = event.data.get("space_name", "Ajax")
+        return {
+            LOGBOOK_ENTRY_NAME: space,
+            LOGBOOK_ENTRY_MESSAGE: _with_source(_tr(hass, "disarmed"), event),
+            LOGBOOK_ENTRY_ICON: "mdi:shield-off",
+        }
+
+    @callback
+    def async_describe_armed_night(event: Event) -> dict[str, str]:
+        space = event.data.get("space_name", "Ajax")
+        return {
+            LOGBOOK_ENTRY_NAME: space,
+            LOGBOOK_ENTRY_MESSAGE: _with_source(_tr(hass, "armed_night"), event),
+            LOGBOOK_ENTRY_ICON: "mdi:shield-moon",
+        }
+
+    @callback
+    def async_describe_armed_home(event: Event) -> dict[str, str]:
+        space = event.data.get("space_name", "Ajax")
+        return {
+            LOGBOOK_ENTRY_NAME: space,
+            LOGBOOK_ENTRY_MESSAGE: _with_source(_tr(hass, "armed_home"), event),
+            LOGBOOK_ENTRY_ICON: "mdi:shield-home",
+        }
+
+    @callback
+    def async_describe_state_changed(event: Event) -> dict[str, str]:
+        space = event.data.get("space_name", "Ajax")
+        old = event.data.get("old_state", "unknown")
+        new = event.data.get("new_state", "unknown")
+        return {
+            LOGBOOK_ENTRY_NAME: space,
+            LOGBOOK_ENTRY_MESSAGE: _with_source(_tr(hass, "state_changed", old=old, new=new), event),
+            LOGBOOK_ENTRY_ICON: "mdi:shield-sync",
+        }
+
+    @callback
+    def async_describe_button(event: Event) -> dict[str, str]:
+        device = event.data.get("device_name", "Button")
+        action = event.data.get("action", "pressed")
+        return {
+            LOGBOOK_ENTRY_NAME: device,
+            LOGBOOK_ENTRY_MESSAGE: action,
+            LOGBOOK_ENTRY_ICON: "mdi:gesture-tap-button",
+        }
+
+    @callback
+    def async_describe_doorbell(event: Event) -> dict[str, str]:
+        device = event.data.get("device_name", "Doorbell")
+        return {
+            LOGBOOK_ENTRY_NAME: device,
+            LOGBOOK_ENTRY_MESSAGE: _tr(hass, "rang"),
+            LOGBOOK_ENTRY_ICON: "mdi:doorbell",
+        }
+
+    @callback
+    def async_describe_smart_lock_doorbell(event: Event) -> dict[str, str]:
+        device = event.data.get("device_name", "Smart Lock")
+        return {
+            LOGBOOK_ENTRY_NAME: device,
+            LOGBOOK_ENTRY_MESSAGE: _tr(hass, "rang"),
+            LOGBOOK_ENTRY_ICON: "mdi:doorbell",
+        }
+
+    @callback
+    def async_describe_scenario(event: Event) -> dict[str, str]:
+        scenario = event.data.get("scenario_name", "Scenario")
+        target = event.data.get("target_name", "")
+        msg = _tr(hass, "triggered_on", target=target) if target else _tr(hass, "triggered")
+        return {
+            LOGBOOK_ENTRY_NAME: scenario,
+            LOGBOOK_ENTRY_MESSAGE: msg,
+            LOGBOOK_ENTRY_ICON: "mdi:play-circle",
+        }
+
+    @callback
+    def async_describe_camera_detection(event: Event) -> dict[str, str]:
+        device = event.data.get("device_name", "Camera")
+        event_type = event.data.get("event_type", "")
+        return {
+            LOGBOOK_ENTRY_NAME: device,
+            LOGBOOK_ENTRY_MESSAGE: _tr(hass, "detected", what=_detection_label(hass, event_type)),
+            LOGBOOK_ENTRY_ICON: "mdi:cctv",
+        }
+
+    async_describe_event(DOMAIN, EVENT_AJAX_ARMED, async_describe_armed)
+    async_describe_event(DOMAIN, EVENT_AJAX_DISARMED, async_describe_disarmed)
+    async_describe_event(DOMAIN, EVENT_AJAX_ARMED_NIGHT, async_describe_armed_night)
+    async_describe_event(DOMAIN, EVENT_AJAX_ARMED_HOME, async_describe_armed_home)
+    async_describe_event(DOMAIN, EVENT_AJAX_SECURITY_STATE_CHANGED, async_describe_state_changed)
+    async_describe_event(DOMAIN, EVENT_AJAX_BUTTON_PRESSED, async_describe_button)
+    async_describe_event(DOMAIN, EVENT_AJAX_DOORBELL_RING, async_describe_doorbell)
+    async_describe_event(DOMAIN, EVENT_AJAX_SMART_LOCK_DOORBELL, async_describe_smart_lock_doorbell)
+    async_describe_event(DOMAIN, EVENT_AJAX_SCENARIO_TRIGGERED, async_describe_scenario)
+    async_describe_event(DOMAIN, EVENT_AJAX_CAMERA_DETECTION, async_describe_camera_detection)

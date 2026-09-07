@@ -1,0 +1,457 @@
+# Ajax Security System Integration for Home Assistant
+
+
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![Hassfest](https://github.com/foXaCe/ajax-security-hass/actions/workflows/hassfest.yml/badge.svg)](https://github.com/foXaCe/ajax-security-hass/actions/workflows/hassfest.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Community Forum](https://img.shields.io/badge/Home_Assistant-Community-blue?logo=home-assistant)](https://community.home-assistant.io/t/custom-component-ajax-systems/948939/2)
+[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://paypal.me/foXaCe66)
+
+**Full-featured** Home Assistant integration for Ajax Security Systems.
+
+---
+
+> [!CAUTION]
+> ## Proxy Mode Security
+> When using a proxy, the proxy administrator can see all API requests/responses and your credentials hash. This means the proxy can impersonate you with the Ajax API. For a detailed threat model analysis, see [Issue #47](https://github.com/foXaCe/ajax-security-hass/issues/47). For security considerations, see [Security & Privacy](#-security--privacy).
+
+---
+
+> [!NOTE]
+> ## About This Integration
+> This is **NOT an official Ajax Systems addon**. It is a community-developed integration created in collaboration with Ajax Systems.
+>
+> **Special thanks to Ajax Systems** for their support and assistance during development. Their help made this integration possible! 🙏
+
+---
+
+> [!WARNING]
+> ## Prerequisites - API Access Required
+> **This integration requires API credentials that are not publicly available.**
+>
+> To use this integration, you need **one of the following**:
+> - An **enterprise API key** from Ajax Systems (Direct mode) - available through Ajax partnership program
+> - Access to a **community proxy server** (Proxy mode) - **no public proxy currently available**
+>
+> ⚠️ **Regular users without API access cannot use this integration at this time.** Self-hosting a proxy is not possible without Ajax API credentials.
+>
+> For discussions and updates, join the community: [HACF Forum](https://forum.hacf.fr/t/alarme-ajax-sur-home-assistant/29511/160)
+
+---
+
+> [!WARNING]
+> ## Real-Time Events Only When Armed
+> Due to Ajax Systems architecture, **real-time events (SSE/SQS) are only received when the system is armed**. When disarmed, the integration uses polling (30s for sensors, 5s for door sensors). This is an Ajax API limitation.
+
+---
+
+## ⚠️ Project Status & Community
+
+This integration is **actively developed** but I'm just getting started with Ajax security systems. I currently own and test with:
+- ✅ **Hub 2 Plus**
+- ✅ **MotionCam** (Motion detector with photo capture)
+- ✅ **DoorProtect Plus** (Door/window contact sensor)
+- ✅ **GlassProtect** (Glass break detector)
+- ✅ **HomeSiren** (Indoor siren)
+- ✅ **Socket** (Smart plug with energy monitoring)
+- ✅ **Button** (Panic/smart button)
+
+Users tested:
+- ✅ **Superior Hub Hybrid 4G**
+- ✅ **KeyPad TouchScreen Jeweller** (limited info available from API)
+- ✅ **Superior DoorProtect Plus Jeweller**
+- ✅ **FireProtect 2 RB (Heat/Smoke/CO Jeweller)**
+- ✅ **Superior HomeSiren Jeweller**
+- ✅ **ReX 2 Jeweller** (Range extender)
+- ✅ **StreetSiren Jeweller**
+- ✅ **Superior MotionCam (PhOD) Jeweller**
+- ✅ **MultiTransmitter Fibra** (with wire input support)
+- ✅ **LeaksProtect** (Flood detector)
+- ✅ **LightSwitch** (1-gang and 2-gang)
+- ✅ **TurretCam / BulletCam / MiniDome** (Video Edge cameras with RTSP)
+- ✅ **Doorbell** (Ajax doorbell)
+
+Since I don't have access to all Ajax devices, **I cannot test every device type**.
+
+**🤝 Community Help Needed**: If you own other Ajax devices and want to help test and improve this integration, your contributions would be greatly appreciated! Together we can make this the best Ajax integration for Home Assistant.
+
+Issues, pull requests, and feedback are welcome!
+
+## ✨ Key Features
+
+### 🔄 Real-Time Synchronization (Optional)
+- **Real-time security events** - Arm/disarm, alarms, and intrusions in < 1 second
+- **Real-time sensor events** - Motion/door events when system is armed or sensor in "Always Active" mode
+- **Multiple connection modes**:
+  - **Direct mode** - Direct API connection with optional AWS SQS for real-time events
+  - **Proxy mode** - Connection via proxy server with SSE (Server-Sent Events) for real-time events
+- **Polling fallback** - 30-second polling for all sensor states, plus 5-second fast polling for door sensors when disarmed or in night mode (for excluded sensors)
+
+### 🛡️ Complete Security Control
+- ✅ **Arm** (Away mode)
+- ✅ **Disarm**
+- ✅ **Night Mode**
+- ✅ **Partial Arming** - Group-based arming
+- ✅ **Force Arm** - Arm with open sensors/problems
+- ✅ **Panic Button** - Trigger emergency alarm from Home Assistant
+
+### 🔔 Notifications
+- ✅ **Real-time Notifications** - Arming/disarming events with user name
+- ✅ **Persistent Notifications** - Optional Home Assistant notifications
+- ✅ **Notification Filters** - None, Alarms only, Security events, or All notifications
+- ✅ **Device Events** - Motion detection, door/window opened (when armed or "Always Active")
+
+### 📱 Device Support
+
+| Category | Devices |
+|----------|---------|
+| **Hubs** | Hub, Hub Plus, Hub 2, Hub 2 Plus, Hub 2 (4G), Hub Hybrid (Jeweller & Fibra) |
+| **Motion Detectors** | MotionProtect, MotionProtect Plus, MotionProtect Outdoor, MotionProtect Curtain, Curtain Outdoor, MotionCam, MotionCam Outdoor, MotionCam (PhOD), MotionCam S (PhOD), MotionCam Fibra, CombiProtect |
+| **Door/Window** | DoorProtect, DoorProtect Plus, DoorProtect Plus Fibra, DoorProtect S Plus |
+| **Wired Inputs** | MultiTransmitter, MultiTransmitter Fibra (with wire input support) |
+| **Fire Safety** | FireProtect, FireProtect Plus, FireProtect 2, FireProtect 2 RB (Heat/Smoke/CO) |
+| **Flood** | LeaksProtect, WaterStop |
+| **Glass Break** | GlassProtect, GlassProtect S |
+| **Sirens** | HomeSiren, HomeSiren S, HomeSiren Fibra, StreetSiren, StreetSiren Fibra, StreetSiren DoubleDeck, StreetSiren S DoubleDeck |
+| **Keypads** | KeyPad, KeyPad Plus, KeyPad S Plus, KeyPad Combi, KeyPad TouchScreen, KeyPad Outdoor, KeyPad Fibra |
+| **Smart Devices** | Socket, SocketOutlet, Relay, WallSwitch, LightSwitch (1-gang, 2-gang, 2-channel 2-way) |
+| **Buttons** | Button, DoubleButton |
+| **Doorbells** | Doorbell, MotionCam Video Doorbell |
+| **Accessories** | SpaceControl, Tag, ReX, ReX 2 |
+| **Transmitters** | Transmitter, Transmitter Fibra |
+| **Video Surveillance** | TurretCam, BulletCam, MiniDome, Indoor Camera (with RTSP main/sub streams) |
+| **Other** | SpeakerPhone, LifeQuality (CO2, temperature, humidity), LineSplit Fibra |
+
+### 📊 Rich Entity Support
+- **Alarm Control Panel** - Full security system control with support for groups/zones
+- **Binary Sensors** - Motion, door/window, smoke, flood, glass break, tamper, shock, tilt, steam, high temperature, external power, human/vehicle/pet detection (video)
+- **Sensors** - Battery level, signal strength, temperature, humidity, CO2, device counts, room assignment, alarm volume/duration, last action, button mode, firmware version
+- **Switches** - Device settings (always active, night mode, LED indicator, shock sensor, tilt sensor, chimes, siren triggers, temperature alarms, current/voltage protection, etc.)
+- **Selects** - Shock sensitivity, LED brightness
+- **Numbers** - Tilt threshold configuration
+- **Cameras** - Video Edge cameras with RTSP streaming (main stream + sub stream for low bandwidth)
+- **Button** - Panic button for emergency situations
+- **Device Tracker** - Hub GPS location
+- **Update** - Firmware update status for hubs and video devices
+
+### 🌍 Multi-Hub & Multi-Language
+- Support for multiple Ajax Hubs in one Home Assistant instance
+- Fully localized in **Dutch**, **English**, **French**, **German**, **Spanish**, **Swedish**, and **Ukrainian**
+- All entities properly translated
+
+## 📦 Installation
+
+### Via HACS (Recommended)
+
+1. Open HACS in Home Assistant
+2. Go to "Integrations"
+3. Click the 3 dots in the top right corner
+4. Select "Custom repositories"
+5. Add this repository URL: `https://github.com/foXaCe/ajax-security-hass`
+6. Category: "Integration"
+7. Click "Add"
+8. Search for "Ajax Security System"
+9. Click "Download"
+10. Restart Home Assistant
+
+### Manual Installation
+
+1. Download the latest release
+2. Copy the `custom_components/ajax` folder to your Home Assistant `config/custom_components/` directory
+3. Restart Home Assistant
+
+### Removal
+
+1. Go to **Settings** → **Devices & Services**
+2. Find **Ajax Security System** and click it
+3. Click the 3 dots menu → **Delete**
+4. Restart Home Assistant
+5. If installed via HACS, go to HACS → Integrations → Ajax Security System → **Remove**
+6. If installed manually, delete the `custom_components/ajax` folder
+
+## ⚙️ Configuration
+
+### Basic Setup
+
+1. Go to **Settings** → **Devices & Services**
+2. Click **"+ Add Integration"**
+3. Search for **"Ajax Security System"**
+4. Choose your connection mode:
+
+#### Proxy Mode
+Connect via a community proxy server. Real-time events via SSE (Server-Sent Events).
+
+- **Proxy URL**: URL of the community proxy server
+- **Email**: Your Ajax account email
+- **Password**: Your Ajax account password
+- **TOTP Secret** (optional): Base32 two-factor secret from your Ajax account. Required if two-factor authentication is enabled on the account (Ajax made 2FA mandatory on 2025-09-01)
+
+> **Note**: No API key required for end users, but requires access to a community proxy server. **No public proxy is currently available** - check the [HACF Forum](https://forum.hacf.fr/t/alarme-ajax-sur-home-assistant/29511/160) for updates.
+
+> ⚠️ **User accounts only**: This integration only supports **user accounts**. PRO/Enterprise accounts are not supported.
+
+#### Direct Mode (Enterprise API key only)
+Direct connection to the Ajax API. Requires an enterprise API key from Ajax Systems.
+
+- **API Key**: Your enterprise API key from Ajax Systems
+- **Email**: Your Ajax account email
+- **Password**: Your Ajax account password
+- **TOTP Secret** (optional): Base32 two-factor secret from your Ajax account. Required if two-factor authentication is enabled on the account (Ajax made 2FA mandatory on 2025-09-01)
+- **AWS Credentials** (optional): For real-time event notifications via SQS
+
+> **Note**: Enterprise API keys are only available through Ajax Systems partnership program.
+
+### Optional: Real-Time Events
+
+#### SSE (Proxy Mode)
+In proxy mode, real-time events are automatically received via Server-Sent Events (SSE). No additional configuration required.
+
+#### AWS SQS (Direct Mode)
+For instant updates (<1 second) in direct mode, configure AWS SQS credentials:
+- **AWS Access Key ID**
+- **AWS Secret Access Key**
+- **Queue Name**
+
+These credentials are provided by Ajax Systems with your enterprise API key.
+
+#### Real-Time Event Limitations
+
+> [!WARNING]
+> Due to Ajax Systems architecture, **real-time events (SSE/SQS) are only received when the system is armed**.
+>
+> When **disarmed**, Ajax does not send real-time events - this is an Ajax API limitation, not the integration.
+> - Motion and door events are **not** sent to SQS/SSE
+> - The integration uses fast polling (5 seconds) for door sensors
+> - Motion sensors fall back to standard polling (30 seconds)
+>
+> **Exception**: Sensors with **"Always Active"** mode enabled will send real-time events even when disarmed.
+
+### Options (after setup)
+
+Go to the integration options to configure:
+- **Persistent Notifications**: Show notifications in Home Assistant UI
+- **Notification Filter**: Choose which notifications to display
+- **Monitored Spaces**: Select which hubs/spaces to monitor
+
+## 🔒 Security & Privacy
+
+### Credential Storage
+- **Local storage only**: Credentials are stored in Home Assistant's encrypted config entry system
+
+### Authentication Process
+1. **Password hashing**: Your password is hashed using SHA-256 before transmission
+2. **Two-factor authentication**: If your Ajax account has 2FA enabled, the integration generates the TOTP code locally from the secret you provide — the secret itself never leaves your Home Assistant instance and is redacted from diagnostics
+3. **Secure communication**: All API communication uses HTTPS (TLS/SSL)
+4. **Session tokens**: Tokens are stored locally and refreshed automatically
+
+### Direct Mode
+- **No third parties**: The integration communicates directly with Ajax servers
+- End-to-end encrypted communication between your Home Assistant and Ajax
+
+### Proxy Mode
+When using a proxy, the proxy administrator can see:
+- All API requests and responses (alarm state, arm/disarm actions, device status)
+- Your email address
+
+**Important**: This integration does not manage any proxy server. For security and trust considerations, contact the person or organization providing your proxy access.
+
+### What the Developer Cannot Access
+- ❌ I (the developer) **cannot access your credentials**
+- ❌ No analytics, telemetry, or tracking
+- ❌ No data collection of any kind
+- ✅ Fully open source - you can audit the code yourself
+
+## 📖 Usage
+
+### Security Control
+
+Use the **Alarm Control Panel** entity to control your security system:
+
+```yaml
+# Example automation: Arm when leaving home
+automation:
+  - alias: "Arm Ajax when leaving"
+    trigger:
+      - platform: state
+        entity_id: person.your_name
+        to: "not_home"
+    action:
+      - service: alarm_control_panel.alarm_arm_away
+        target:
+          entity_id: alarm_control_panel.ajax_alarm_home
+```
+
+### Force Arming
+
+Use force arming to arm the system even with open sensors:
+
+```yaml
+# Force arm (away)
+service: ajax.force_arm
+target:
+  entity_id: alarm_control_panel.ajax_alarm_home
+
+# Force arm night mode
+service: ajax.force_arm_night
+target:
+  entity_id: alarm_control_panel.ajax_alarm_home
+```
+
+⚠️ **Warning**: Force arming ignores open sensors and system problems. Use with caution.
+
+### Panic Button
+
+```yaml
+# Trigger emergency alarm
+service: button.press
+target:
+  entity_id: button.ajax_panic_home
+```
+
+⚠️ **Warning**: The panic button triggers a **real emergency alarm**.
+
+### Device Information Report
+
+Generate a diagnostic report to help improve the integration:
+
+```yaml
+service: ajax.generate_device_info
+```
+
+This creates an anonymized JSON file with device information (no sensitive data included).
+
+## 🔄 How It Works (Data Update)
+
+The integration combines **push** and **adaptive polling** so the UI stays in sync without hammering the Ajax cloud:
+
+| Mode | Push channel | REST polling | Notes |
+|------|--------------|--------------|-------|
+| Armed | SSE (proxy) **or** AWS SQS (direct) | 30 s | Real-time events arrive in < 1 s and immediately refresh the relevant entities |
+| Disarmed | None (Ajax limitation) | 60 s | Door sensors fall back to 5 s fast-poll when a door opens (recovers fast-close UX) |
+| Cameras with ONVIF credentials | Local ONVIF PullPoint | n/a | AI detections (motion/human/vehicle/pet/doorbell ring) fire entirely offline, even when disarmed |
+
+The coordinator caches metadata (rooms, users, groups) and only refreshes the heavy `/spaces` payload once an hour — push events trigger a forced refresh as needed.
+
+## 💡 Use Cases & Examples
+
+### Notify with camera snapshot on AI detection
+
+`ajax_camera_detection` events now ship a `snapshot_url` you can embed directly in Telegram / mobile_app payloads (no extra `camera.snapshot` call required):
+
+```yaml
+automation:
+  - alias: "Telegram: human detected on the front door camera"
+    trigger:
+      - platform: event
+        event_type: ajax_camera_detection
+        event_data:
+          event_type: human
+    action:
+      - service: notify.mobile_app_phone
+        data:
+          message: "{{ trigger.event.data.device_name }} detected a human"
+          data:
+            image: "{{ trigger.event.data.snapshot_url }}"
+```
+
+### Auto-arm when nobody is home
+
+```yaml
+automation:
+  - alias: "Arm Ajax when everyone leaves"
+    trigger:
+      - platform: state
+        entity_id: zone.home
+        to: "0"
+    action:
+      - service: alarm_control_panel.alarm_arm_away
+        target:
+          entity_id: alarm_control_panel.ajax_alarm_home
+```
+
+### Trigger the panic button from a wall switch
+
+```yaml
+automation:
+  - alias: "Wall switch → Ajax panic"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.kitchen_panic_switch
+        to: "on"
+    action:
+      - service: button.press
+        target:
+          entity_id: button.ajax_panic_home
+```
+
+## ⚠️ Known Limitations
+
+| Limitation | Impact | Workaround |
+|------------|--------|------------|
+| Ajax does not push events while **disarmed** | Door / motion state changes only seen on the next REST poll | Door-sensor fast-poll (5 s) when disarmed; enable "Always Active" on the sensor to receive real-time events |
+| Enterprise API key not available to the general public | Direct mode requires Ajax partnership | Use Proxy mode with a community / shared proxy |
+| ONVIF requires the camera's IP to be reachable from Home Assistant | AI detections silent if cameras are on an isolated VLAN | Open ports 80 (HTTP) and 554 (RTSP) between HA and the camera subnet |
+| NVR-channel routing depends on `sourceAliases` payload | Some NVR firmwares omit the alias → detections route to NVR fallback instead of the linked camera | Update the NVR firmware to the latest Ajax release |
+| Real-time event source is single-tenant | A user can only consume SSE **or** SQS, not both | The integration auto-picks SSE (proxy) > SQS (direct) |
+
+## 🔧 Troubleshooting
+
+### Authentication Errors
+
+The integration provides specific error messages to help diagnose login issues:
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| **Invalid API key** | API key is missing or incorrect | Check your enterprise API key |
+| **Invalid email or password** | Wrong credentials | Verify your Ajax account email and password |
+| **Account type not supported** | Using a PRO/Enterprise account | Use a standard user account instead |
+
+### Integration not loading
+1. Check Home Assistant logs for errors
+2. Verify your Ajax credentials are correct
+3. Ensure you have an active internet connection
+4. Make sure you're using a **user account** (not PRO/Enterprise)
+
+### Real-time updates not working
+1. Verify AWS SQS credentials are configured correctly
+2. Check that the queue name matches exactly
+3. Review logs for SQS connection errors
+
+### Devices not appearing
+1. Wait for initial sync to complete (up to 30 seconds)
+2. Check that devices are visible in the Ajax app
+3. Try reloading the integration
+
+### Debug Logging
+
+```yaml
+logger:
+  default: info
+  logs:
+    custom_components.ajax: debug
+```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+If you have Ajax devices that aren't tested yet, your help would be invaluable in improving device support.
+
+### Development Process
+
+This integration is developed through a **collaborative approach**:
+- **Human expertise** - Architecture, security decisions, and code review by [@foXaCe](https://github.com/foXaCe)
+- **AI assistance** - Code generation using Claude (Anthropic)
+- **Community contributions** - Bug reports, testing, and feature requests
+
+All code is reviewed, tested with real hardware, and open source.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## ⚠️ Disclaimer
+
+This integration is **not officially affiliated** with Ajax Systems. It is a community project developed with support from Ajax Systems.
+
+Use at your own risk. The developer is not responsible for any issues arising from the use of this integration.

@@ -1,0 +1,1747 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Esta integración Ajax ya está configurada.",
+      "api_not_initialized": "No se pudo inicializar el cliente de la API de Ajax. Reinicie la configuración.",
+      "hub_associated": "Hub asociado a la configuración existente.",
+      "no_spaces_available": "No hay espacios disponibles. Por favor, recargue la integración.",
+      "reauth_failed": "Re-autenticación fallida. Por favor, reconfigure la integración.",
+      "reauth_successful": "Re-autenticación exitosa.",
+      "wrong_account": "La cuenta introducida no coincide con la cuenta configurada para esta entrada. Para usar otra cuenta de Ajax, añada una nueva entrada de integración."
+    },
+    "error": {
+      "cannot_connect": "Error al conectar con la API de Ajax. Verifique su conexión a Internet.",
+      "entry_not_found": "Configuración no encontrada. Por favor, inténtelo de nuevo.",
+      "invalid_account_type": "Tipo de cuenta no soportado. Use una cuenta de usuario (no una cuenta PRO/Empresarial).",
+      "invalid_api_key": "Clave API inválida o faltante. Verifique su clave API empresarial.",
+      "invalid_auth": "Credenciales API inválidas. Verifique su clave API, correo y contraseña.",
+      "invalid_password": "Correo o contraseña incorrectos. Verifique sus credenciales de cuenta Ajax.",
+      "invalid_proxy_url": "URL del proxy inválida. La URL debe comenzar con http:// o https://",
+      "invalid_totp_secret": "Secreto TOTP inválido. Introduzca la clave Base32 mostrada al activar la autenticación de dos factores.",
+      "no_spaces_selected": "Por favor, seleccione al menos un espacio para activar.",
+      "unknown": "Error inesperado. Consulte los registros para más detalles."
+    },
+    "step": {
+      "dhcp_confirm": {
+        "data": {
+          "action": "Acción"
+        },
+        "description": "Se ha detectado un hub Ajax ({hostname}) con dirección MAC {mac} en su red.\n\n¿Desea asociarlo a una configuración existente o crear una nueva?",
+        "title": "Hub Ajax Detectado"
+      },
+      "direct": {
+        "data": {
+          "api_key": "Clave API",
+          "aws_access_key_id": "Clave de acceso AWS (Opcional)",
+          "aws_secret_access_key": "Clave secreta AWS (Opcional)",
+          "email": "Correo electrónico",
+          "password": "Contraseña",
+          "queue_name": "Nombre de cola SQS (Opcional)",
+          "totp_secret": "Secreto de doble factor (opcional)"
+        },
+        "data_description": {
+          "api_key": "Su clave API proporcionada por Ajax Systems",
+          "aws_access_key_id": "Clave de acceso AWS para eventos SQS en tiempo real",
+          "aws_secret_access_key": "Clave secreta AWS para eventos SQS en tiempo real",
+          "email": "Su correo electrónico de cuenta Ajax",
+          "password": "Su contraseña de cuenta Ajax",
+          "queue_name": "Nombre de la cola SQS (ej: ajax-events-xxxxx-prod.fifo)",
+          "totp_secret": "Clave Base32 de la configuración de su aplicación de autenticación. Déjelo en blanco si la 2FA no está habilitada en su cuenta Ajax."
+        },
+        "description": "Ingrese sus credenciales API de Ajax.\n\n⚠️ **Solo cuenta de usuario** (no cuentas PRO/Empresarial).\n\nOpcional: Agregue las credenciales AWS para recibir eventos en tiempo real.",
+        "title": "Conexión directa"
+      },
+      "proxy": {
+        "data": {
+          "email": "Correo electrónico",
+          "password": "Contraseña",
+          "proxy_url": "URL del proxy",
+          "totp_secret": "Secreto de doble factor (opcional)",
+          "verify_ssl": "Verificar certificado SSL"
+        },
+        "data_description": {
+          "email": "Su correo electrónico de cuenta Ajax",
+          "password": "Su contraseña de cuenta Ajax",
+          "proxy_url": "URL del servidor proxy Ajax",
+          "totp_secret": "Clave Base32 de la configuración de su aplicación de autenticación. Déjelo en blanco si la 2FA no está habilitada en su cuenta Ajax.",
+          "verify_ssl": "Desactivar si usa un certificado autofirmado (HTTPS)"
+        },
+        "description": "Conéctese a través de un servidor proxy Ajax.\n\n⚠️ **Solo cuenta de usuario** (no cuentas PRO/Empresarial).\n\nLos eventos se recibirán en tiempo real vía SSE.",
+        "title": "Conexión vía proxy"
+      },
+      "reauth_confirm": {
+        "data": {
+          "password": "Contraseña",
+          "totp_secret": "Secreto de doble factor (opcional)"
+        },
+        "data_description": {
+          "totp_secret": "Clave Base32 de la configuración de su aplicación de autenticación. Déjelo en blanco si la 2FA no está habilitada en su cuenta Ajax."
+        },
+        "description": "Su sesión ha expirado. Por favor, ingrese nuevamente su contraseña para {email}.",
+        "title": "Re-autenticación"
+      },
+      "reconfigure": {
+        "data": {
+          "api_key": "Clave API",
+          "email": "Correo electrónico",
+          "password": "Contraseña",
+          "proxy_url": "URL del proxy",
+          "totp_secret": "Secreto de doble factor (opcional)",
+          "verify_ssl": "Verificar certificado SSL"
+        },
+        "data_description": {
+          "totp_secret": "Clave Base32 de la configuración de su aplicación de autenticación. Déjelo en blanco si la 2FA no está habilitada en su cuenta Ajax.",
+          "verify_ssl": "Desactivar si el proxy usa un certificado autofirmado."
+        },
+        "description": "Actualice sus credenciales de Ajax.",
+        "title": "Reconfigurar Ajax"
+      },
+      "select_spaces": {
+        "data": {
+          "enabled_spaces": "Espacios activados"
+        },
+        "description": "Se encontraron {space_count} espacios. Seleccione qué espacios activar en Home Assistant.\n\nLos espacios no seleccionados no crearán dispositivos ni entidades.",
+        "title": "Seleccionar espacios"
+      },
+      "user": {
+        "data": {
+          "auth_mode": "Modo de autenticación"
+        },
+        "data_description": {
+          "auth_mode": "Proxy: conexión a través del servidor proxy Ajax. Directo: solo clave API empresarial."
+        },
+        "description": "Elija cómo conectarse a Ajax Systems.",
+        "title": "Modo de conexión"
+      }
+    }
+  },
+  "entity": {
+    "alarm_control_panel": {
+      "ajax": {
+        "name": "Ajax",
+        "state": {
+          "armed": "Armado",
+          "arming": "Armando",
+          "disarmed": "Desarmado",
+          "disarming": "Desarmando",
+          "pending": "Pendiente",
+          "triggered": "Disparada"
+        },
+        "state_attributes": {
+          "hub_connection_status": {
+            "name": "Estado de conexión del hub",
+            "state": {
+              "offline": "Fuera de línea",
+              "online": "En línea",
+              "unknown": "Desconocido"
+            }
+          },
+          "malfunctions_count": {
+            "name": "Mal funcionamientos"
+          },
+          "new_notifications_count": {
+            "name": "Nuevas notificaciones"
+          },
+          "security_state": {
+            "name": "Estado de seguridad",
+            "state": {
+              "armed": "Armado",
+              "arming_incomplete": "Armado incompleto",
+              "awaiting_confirmation": "Esperando confirmación",
+              "awaiting_exit_timer": "Esperando salida",
+              "awaiting_vds_arming_completion": "Esperando armado VDS",
+              "disarmed": "Desarmado",
+              "night_mode": "Modo nocturno",
+              "none": "Ninguno",
+              "partially_armed": "Armado parcial",
+              "two_stage_arming_incomplete": "Armado en 2 etapas incompleto"
+            }
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "battery_connected": {
+        "name": "Batería Hub"
+      },
+      "beep_on_arm": {
+        "name": "Pitido al armar/desarmar"
+      },
+      "beep_on_delay": {
+        "name": "Pitido en retardo de entrada/salida"
+      },
+      "co2_problem": {
+        "name": "Nivel de CO₂",
+        "state": {
+          "off": "Normal",
+          "on": "CO₂ elevado"
+        }
+      },
+      "connection": {
+        "name": "Conexión hub",
+        "state": {
+          "off": "Desconectado",
+          "on": "Conectado"
+        }
+      },
+      "current_limit": {
+        "name": "Protección de corriente",
+        "state": {
+          "off": "Normal",
+          "on": "Límite de corriente alcanzado"
+        }
+      },
+      "data_channel_ok": {
+        "name": "Canal de datos",
+        "state": {
+          "off": "Problema",
+          "on": "OK"
+        }
+      },
+      "doorbell_ring": {
+        "name": "Timbre"
+      },
+      "external_contact": {
+        "name": "Puerta (contacto externo)"
+      },
+      "external_power": {
+        "name": "Alimentación externa"
+      },
+      "externally_powered": {
+        "name": "Alimentación externa"
+      },
+      "glass_break": {
+        "name": "Detector de rotura de cristal"
+      },
+      "gsm_antenna": {
+        "name": "Antena GSM"
+      },
+      "high_temperature": {
+        "name": "Temperatura alta",
+        "state": {
+          "off": "Normal",
+          "on": "Umbral de temperatura superado"
+        }
+      },
+      "humidity_problem": {
+        "name": "Humedad",
+        "state": {
+          "off": "Normal",
+          "on": "Fuera de rango"
+        }
+      },
+      "jeweller_radio": {
+        "name": "Radio Jeweller"
+      },
+      "mcp_fire_alarm": {
+        "name": "Alarma de incendio",
+        "state": {
+          "off": "Normal",
+          "on": "Alarma activada"
+        }
+      },
+      "problem": {
+        "name": "Problema detectado",
+        "state_attributes": {
+          "devices_with_problems": {
+            "name": "Dispositivos con problemas"
+          },
+          "problem_devices": {
+            "name": "Lista de dispositivos"
+          },
+          "total_malfunctions": {
+            "name": "Total mal funcionamientos"
+          }
+        }
+      },
+      "rapid_temperature_rise": {
+        "name": "Aumento rápido de temperatura",
+        "state": {
+          "off": "Normal",
+          "on": "Aumento rápido de temperatura detectado"
+        }
+      },
+      "shock": {
+        "name": "Sensor de golpe"
+      },
+      "smart_lock_door": {
+        "name": "Puerta",
+        "state": {
+          "off": "Cerrada",
+          "on": "Abierta"
+        }
+      },
+      "steam": {
+        "name": "Vapor detectado",
+        "state": {
+          "off": "Despejado",
+          "on": "Vapor detectado"
+        }
+      },
+      "system_problems": {
+        "name": "Problemas del sistema",
+        "state": {
+          "off": "Sin problemas",
+          "on": "Problemas detectados"
+        },
+        "state_attributes": {
+          "devices_with_problems": {
+            "name": "Dispositivos con problemas"
+          },
+          "problem_devices": {
+            "name": "Lista de dispositivos"
+          },
+          "total_malfunctions": {
+            "name": "Total mal funcionamientos"
+          }
+        }
+      },
+      "temperature_limit": {
+        "name": "Protección de temperatura",
+        "state": {
+          "off": "Normal",
+          "on": "Límite de temperatura alcanzado"
+        }
+      },
+      "temperature_problem": {
+        "name": "Temperatura",
+        "state": {
+          "off": "Normal",
+          "on": "Fuera de rango"
+        }
+      },
+      "tilt": {
+        "name": "Sensor de inclinación"
+      },
+      "video_edge_lid_closed": {
+        "name": "Tapa",
+        "state": {
+          "off": "Cerrada",
+          "on": "Abierta"
+        }
+      },
+      "video_edge_onvif_enabled": {
+        "name": "Integración ONVIF",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "video_human": {
+        "name": "Detección de persona",
+        "state": {
+          "off": "Ninguna",
+          "on": "Persona detectada"
+        }
+      },
+      "video_line_crossing": {
+        "name": "Cruce de línea",
+        "state": {
+          "off": "Ninguno",
+          "on": "Detectado"
+        }
+      },
+      "video_motion": {
+        "name": "Detección de movimiento",
+        "state": {
+          "off": "Ninguno",
+          "on": "Movimiento detectado"
+        }
+      },
+      "video_pet": {
+        "name": "Detección de mascota",
+        "state": {
+          "off": "Ninguna",
+          "on": "Mascota detectada"
+        }
+      },
+      "video_vehicle": {
+        "name": "Detección de vehículo",
+        "state": {
+          "off": "Ninguno",
+          "on": "Vehículo detectado"
+        }
+      },
+      "waterstop_temp_protect": {
+        "name": "Protección antiheladas",
+        "state": {
+          "off": "Inactiva",
+          "on": "Activa"
+        }
+      },
+      "wings_radio": {
+        "name": "Radio Wings"
+      }
+    },
+    "button": {
+      "panic": {
+        "name": "Botón de pánico"
+      }
+    },
+    "camera": {
+      "camera_sub_stream": {
+        "name": "Flujo secundario"
+      },
+      "nvr_channel": {
+        "name": "Canal {number}"
+      },
+      "nvr_channel_sub": {
+        "name": "Canal {number} Secundario"
+      }
+    },
+    "device_tracker": {
+      "position": {
+        "name": "Posición"
+      }
+    },
+    "event": {
+      "button_press": {
+        "name": "Botón",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "double_press": "Doble pulsación",
+              "emergency": "Emergencia",
+              "long_press": "Pulsación larga",
+              "panic": "Pánico",
+              "single_press": "Pulsación simple"
+            }
+          }
+        }
+      },
+      "camera_detection": {
+        "name": "Detección",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "human": "Persona",
+              "line_crossing": "Cruce de línea",
+              "motion": "Movimiento",
+              "pet": "Mascota",
+              "vehicle": "Vehículo"
+            }
+          }
+        }
+      },
+      "doorbell_press": {
+        "name": "Timbre",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "ring": "Timbrazo"
+            }
+          }
+        }
+      },
+      "smart_lock_event": {
+        "name": "Evento",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_left_open": "Puerta dejada abierta",
+              "ring": "Timbre pulsado"
+            }
+          }
+        }
+      }
+    },
+    "light": {
+      "dimmer_light": {
+        "name": "Regulador"
+      }
+    },
+    "lock": {
+      "smart_lock": {
+        "name": "Cerradura"
+      }
+    },
+    "number": {
+      "arm_brightness": {
+        "name": "Brillo en modo armado"
+      },
+      "brightness_change_speed": {
+        "name": "Velocidad de cambio de brillo"
+      },
+      "current_threshold": {
+        "name": "Límite de corriente"
+      },
+      "disarm_brightness": {
+        "name": "Brillo en modo desarmado"
+      },
+      "led_brightness_level": {
+        "name": "Brillo LED"
+      },
+      "max_brightness": {
+        "name": "Brillo máximo"
+      },
+      "min_brightness": {
+        "name": "Brillo mínimo"
+      },
+      "tilt_degrees": {
+        "name": "Umbral de inclinación"
+      },
+      "touch_sensitivity": {
+        "name": "Sensibilidad táctil"
+      }
+    },
+    "select": {
+      "alarm_duration_select": {
+        "name": "Duración de la alarma",
+        "state": {
+          "1": "1 minuto",
+          "10": "10 minutos",
+          "15": "15 minutos",
+          "2": "2 minutos",
+          "3": "3 minutos",
+          "5": "5 minutos"
+        }
+      },
+      "beep_volume": {
+        "name": "Volumen del pitido",
+        "state": {
+          "loud": "Fuerte",
+          "quiet": "Silencioso",
+          "very_loud": "Muy fuerte"
+        }
+      },
+      "dimmer_curve": {
+        "name": "Curva del regulador",
+        "state": {
+          "curve_type_auto": "Automático",
+          "curve_type_linear": "Lineal",
+          "curve_type_logarithmic": "Logarítmico"
+        }
+      },
+      "indication_mode": {
+        "name": "Modo de retroiluminación",
+        "state": {
+          "always": "Siempre encendido",
+          "if_on": "Cuando está activo",
+          "off": "Apagado"
+        }
+      },
+      "led_brightness": {
+        "name": "Brillo LED",
+        "state": {
+          "max": "Alto",
+          "min": "Bajo"
+        }
+      },
+      "light_source": {
+        "name": "Tipo de fuente de luz",
+        "state": {
+          "light_source_auto": "Automático",
+          "light_source_leading_edge": "Flanco de subida",
+          "light_source_trailing_edge": "Flanco de bajada"
+        }
+      },
+      "shock_sensitivity": {
+        "name": "Sensibilidad de golpe",
+        "state": {
+          "high": "Alto",
+          "low": "Bajo",
+          "normal": "Normal"
+        }
+      },
+      "siren_volume": {
+        "name": "Volumen de la sirena",
+        "state": {
+          "disabled": "Desactivado",
+          "loud": "Fuerte",
+          "quiet": "Silencioso",
+          "very_loud": "Muy fuerte"
+        }
+      },
+      "touch_mode": {
+        "name": "Modo táctil",
+        "state": {
+          "touch_mode_blocked": "Bloqueado",
+          "touch_mode_toggle": "Solo alternar",
+          "touch_mode_toggle_and_slider": "Alternar y deslizar"
+        }
+      }
+    },
+    "sensor": {
+      "active_connection": {
+        "name": "Conexión activa"
+      },
+      "alarm_delay": {
+        "name": "Retardo de alarma"
+      },
+      "alarm_duration": {
+        "name": "Duración de la alarma",
+        "state": {
+          "10_minutes": "10 minutos",
+          "15_minutes": "15 minutos",
+          "1_minute": "1 minuto",
+          "2_minutes": "2 minutos",
+          "3_minutes": "3 minutos",
+          "5_minutes": "5 minutos",
+          "continuous": "Continuo"
+        }
+      },
+      "alarm_mode": {
+        "name": "Modo de alarma"
+      },
+      "alarm_type": {
+        "name": "Tipo de alarma"
+      },
+      "alarm_volume_level": {
+        "name": "Volumen de la alarma",
+        "state": {
+          "disabled": "Desactivado",
+          "loud": "Fuerte",
+          "mute": "Silenciado",
+          "normal": "Normal",
+          "off": "Desactivado",
+          "quiet": "Silencioso",
+          "very_loud": "Muy fuerte"
+        }
+      },
+      "arm_delay": {
+        "name": "Retardo de armado"
+      },
+      "battery_state": {
+        "name": "Estado de la batería"
+      },
+      "beep_volume_level": {
+        "name": "Volumen del pitido",
+        "state": {
+          "loud": "Fuerte",
+          "normal": "Normal",
+          "off": "Desactivado",
+          "quiet": "Silencioso",
+          "very_loud": "Muy fuerte"
+        }
+      },
+      "brightness": {
+        "name": "Brillo"
+      },
+      "button_brightness": {
+        "name": "Brillo LED del botón",
+        "state": {
+          "high": "Alto",
+          "low": "Bajo",
+          "off": "Apagado"
+        }
+      },
+      "button_mode": {
+        "name": "Modo del botón",
+        "state": {
+          "interconnect_delay": "Retardo de interconexión",
+          "panic_button": "Botón de pánico",
+          "smart_button": "Botón inteligente"
+        }
+      },
+      "bypassed_devices": {
+        "name": "Dispositivos omitidos"
+      },
+      "calibration_state": {
+        "name": "Estado de calibración"
+      },
+      "connection_type": {
+        "name": "Tipo de conexión"
+      },
+      "contact_mode": {
+        "name": "Modo de contacto"
+      },
+      "current": {
+        "name": "Corriente"
+      },
+      "current_brightness": {
+        "name": "Brillo actual"
+      },
+      "data_channel_quality": {
+        "name": "Calidad del canal de datos"
+      },
+      "device_color": {
+        "name": "Color del dispositivo",
+        "state": {
+          "black": "Negro",
+          "blue": "Azul",
+          "graphite": "Grafito",
+          "green": "Verde",
+          "red": "Rojo",
+          "white": "Blanco",
+          "yellow": "Amarillo"
+        }
+      },
+      "device_label": {
+        "name": "Etiqueta del dispositivo"
+      },
+      "device_marketing_id": {
+        "name": "ID de marketing del dispositivo"
+      },
+      "device_state": {
+        "name": "Estado del dispositivo"
+      },
+      "devices_with_malfunctions": {
+        "name": "Dispositivos con mal funcionamiento"
+      },
+      "energy": {
+        "name": "Energía"
+      },
+      "false_press_filter": {
+        "name": "Filtro de pulsaciones falsas",
+        "state": {
+          "disabled": "Desactivado",
+          "double_click": "Doble clic",
+          "long_push": "Pulsación larga"
+        }
+      },
+      "firmware_version": {
+        "name": "Versión de firmware"
+      },
+      "gsm_connection_status": {
+        "name": "Estado de conexión GSM",
+        "state": {
+          "connected": "Conectado",
+          "connecting": "Conectando",
+          "disconnected": "Desconectado",
+          "error": "Error"
+        }
+      },
+      "gsm_signal_level": {
+        "name": "Nivel de señal GSM"
+      },
+      "gsm_type": {
+        "name": "Tipo GSM",
+        "state": {
+          "2g": "2G",
+          "3g": "3G",
+          "4g": "4G",
+          "5g": "5G",
+          "unknown": "Desconocido"
+        }
+      },
+      "hardware_version": {
+        "name": "Versión de hardware"
+      },
+      "hub_active_channels": {
+        "name": "Canales activos",
+        "state_attributes": {
+          "channels": {
+            "name": "Lista de canales"
+          },
+          "ethernet": {
+            "name": "Ethernet"
+          },
+          "gsm": {
+            "name": "GSM"
+          },
+          "wifi": {
+            "name": "WiFi"
+          }
+        }
+      },
+      "hub_battery": {
+        "name": "Batería Hub"
+      },
+      "hub_ethernet_ip": {
+        "name": "IP Ethernet Hub"
+      },
+      "hub_external_power": {
+        "name": "Alimentación externa Hub",
+        "state": {
+          "connected": "Conectado",
+          "disconnected": "Desconectado"
+        }
+      },
+      "hub_geofence": {
+        "name": "Posición GPS",
+        "state_attributes": {
+          "latitude": {
+            "name": "Latitud"
+          },
+          "longitude": {
+            "name": "Longitud"
+          },
+          "radius_meters": {
+            "name": "Radio (metros)"
+          }
+        }
+      },
+      "hub_grade_mode": {
+        "name": "Grado de seguridad"
+      },
+      "hub_gsm": {
+        "name": "GSM / SIM",
+        "state": {
+          "good": "Bueno",
+          "none": "Ninguno",
+          "normal": "Normal",
+          "strong": "Fuerte",
+          "weak": "Débil"
+        },
+        "state_attributes": {
+          "active_sim": {
+            "name": "SIM activa"
+          },
+          "modem_imei": {
+            "name": "IMEI Modem"
+          },
+          "network_status": {
+            "name": "Estado de red"
+          },
+          "signal_level": {
+            "name": "Nivel de señal"
+          },
+          "sim1_active": {
+            "name": "SIM 1 activa"
+          },
+          "sim1_apn": {
+            "name": "SIM 1 APN"
+          },
+          "sim1_traffic_rx_kb": {
+            "name": "SIM 1 recibido (KB)"
+          },
+          "sim1_traffic_tx_kb": {
+            "name": "SIM 1 enviado (KB)"
+          },
+          "sim2_active": {
+            "name": "SIM 2 activa"
+          },
+          "sim2_apn": {
+            "name": "SIM 2 APN"
+          },
+          "sim2_traffic_rx_kb": {
+            "name": "SIM 2 recibido (KB)"
+          },
+          "sim2_traffic_tx_kb": {
+            "name": "SIM 2 enviado (KB)"
+          },
+          "total_sims": {
+            "name": "Número de SIM"
+          }
+        }
+      },
+      "hub_hardware_version": {
+        "name": "Versión de hardware",
+        "state_attributes": {
+          "cpu": {
+            "name": "CPU"
+          },
+          "ethernet": {
+            "name": "Ethernet"
+          },
+          "flash": {
+            "name": "Flash"
+          },
+          "modem": {
+            "name": "Modem"
+          },
+          "pcb": {
+            "name": "PCB"
+          },
+          "rfm": {
+            "name": "RFM"
+          },
+          "wifi": {
+            "name": "WiFi"
+          }
+        }
+      },
+      "hub_led_brightness": {
+        "name": "Brillo LED Hub"
+      },
+      "hub_limits": {
+        "name": "Límites del sistema",
+        "state_attributes": {
+          "max_cameras": {
+            "name": "Cámaras máx"
+          },
+          "max_groups": {
+            "name": "Grupos máx"
+          },
+          "max_rooms": {
+            "name": "Habitaciones máx"
+          },
+          "max_sensors": {
+            "name": "Sensores máx"
+          },
+          "max_users": {
+            "name": "Usuarios máx"
+          }
+        }
+      },
+      "hub_noise_level": {
+        "name": "Nivel de ruido radio",
+        "state": {
+          "high": "Alto",
+          "normal": "Normal"
+        },
+        "state_attributes": {
+          "channel_1_dbm": {
+            "name": "Canal 1 (dBm)"
+          },
+          "channel_2_dbm": {
+            "name": "Canal 2 (dBm)"
+          },
+          "data_channel_dbm": {
+            "name": "Canal datos (dBm)"
+          },
+          "high": {
+            "name": "Ruido alto"
+          }
+        }
+      },
+      "hub_offline_delay": {
+        "name": "Retardo alarma fuera de línea"
+      },
+      "hub_ping_period": {
+        "name": "Intervalo de ping"
+      },
+      "hub_rooms": {
+        "name": "Habitaciones",
+        "state_attributes": {
+          "room_names": {
+            "name": "Lista de habitaciones"
+          },
+          "rooms": {
+            "name": "Detalle de habitaciones"
+          }
+        }
+      },
+      "hub_timezone": {
+        "name": "Zona horaria Hub"
+      },
+      "hub_users": {
+        "name": "Usuarios",
+        "state_attributes": {
+          "user_names": {
+            "name": "Nombres de usuarios"
+          },
+          "users": {
+            "name": "Detalle de usuarios"
+          }
+        }
+      },
+      "hub_wifi": {
+        "name": "WiFi",
+        "state": {
+          "good": "Bueno",
+          "none": "Ninguno",
+          "normal": "Normal",
+          "strong": "Fuerte",
+          "weak": "Débil"
+        },
+        "state_attributes": {
+          "channel": {
+            "name": "Canal"
+          },
+          "ip": {
+            "name": "Dirección IP"
+          },
+          "security": {
+            "name": "Seguridad"
+          },
+          "signal_level": {
+            "name": "Nivel de señal"
+          },
+          "ssid": {
+            "name": "Red"
+          }
+        }
+      },
+      "image_resolution": {
+        "name": "Resolución de foto"
+      },
+      "indicator_light_mode": {
+        "name": "Modo LED"
+      },
+      "ip_address": {
+        "name": "Dirección IP"
+      },
+      "last_action": {
+        "name": "Última acción",
+        "state": {
+          "double_press": "Doble pulsación",
+          "emergency": "Emergencia",
+          "long_press": "Pulsación larga",
+          "panic": "Pánico",
+          "single_press": "Pulsación simple"
+        }
+      },
+      "last_alert": {
+        "name": "Última alerta",
+        "state_attributes": {
+          "device_name": {
+            "name": "Dispositivo"
+          },
+          "event_type": {
+            "name": "Tipo de evento"
+          },
+          "notification_type": {
+            "name": "Tipo de notificación"
+          },
+          "room_name": {
+            "name": "Habitación"
+          }
+        }
+      },
+      "last_ring": {
+        "name": "Última llamada"
+      },
+      "led_indication": {
+        "name": "Indicación LED"
+      },
+      "mac_address": {
+        "name": "Dirección MAC"
+      },
+      "malfunctions": {
+        "name": "Mal funcionamientos"
+      },
+      "mcp_switch_state": {
+        "name": "Estado del botón",
+        "state": {
+          "button_pressed": "Pulsado",
+          "button_unpressed": "Normal"
+        }
+      },
+      "network_status": {
+        "name": "Estado de red"
+      },
+      "noise_level_avg": {
+        "name": "Nivel de ruido promedio",
+        "state_attributes": {
+          "always_active": {
+            "name": "Siempre activo"
+          },
+          "armed_in_night_mode": {
+            "name": "Armado en modo nocturno"
+          },
+          "channel1": {
+            "name": "Canal 1"
+          },
+          "channel2": {
+            "name": "Canal 2"
+          },
+          "high": {
+            "name": "Ruido alto"
+          }
+        }
+      },
+      "nvr_cameras": {
+        "name": "Cámaras"
+      },
+      "online_devices": {
+        "name": "Dispositivos en línea"
+      },
+      "photos_per_alarm": {
+        "name": "Fotos por alarma"
+      },
+      "power": {
+        "name": "Potencia"
+      },
+      "power_supply_mode": {
+        "name": "Modo de alimentación"
+      },
+      "recent_events": {
+        "name": "Último evento",
+        "state": {
+          "no_event": "Sin eventos"
+        },
+        "state_attributes": {
+          "event_count": {
+            "name": "Número de eventos"
+          },
+          "events": {
+            "name": "Eventos recientes"
+          },
+          "events_raw": {
+            "name": "Datos brutos"
+          }
+        }
+      },
+      "room": {
+        "name": "Habitación"
+      },
+      "sensitivity": {
+        "name": "Sensibilidad",
+        "state": {
+          "high": "Alto",
+          "low": "Bajo",
+          "normal": "Normal"
+        }
+      },
+      "signal_strength": {
+        "name": "Intensidad de señal"
+      },
+      "sim_status": {
+        "name": "Estado de tarjetas SIM",
+        "state_attributes": {
+          "sim_cards": {
+            "name": "Detalles de tarjetas SIM"
+          },
+          "sim_slots_total": {
+            "name": "Ranuras SIM totales"
+          },
+          "sim_slots_used": {
+            "name": "Ranuras SIM usadas"
+          }
+        }
+      },
+      "smart_lock_last_changed_by": {
+        "name": "Última modificación por"
+      },
+      "total_devices": {
+        "name": "Número total de dispositivos"
+      },
+      "unread_notifications": {
+        "name": "Notificaciones no leídas"
+      },
+      "video_edge_archive_depth": {
+        "name": "Duración del archivo"
+      },
+      "video_edge_connection": {
+        "name": "Conexión",
+        "state": {
+          "offline": "Fuera de línea",
+          "online": "En línea",
+          "unknown": "Desconocido"
+        }
+      },
+      "video_edge_cpu_usage": {
+        "name": "Uso de CPU"
+      },
+      "video_edge_led_brightness": {
+        "name": "Brillo LED"
+      },
+      "video_edge_max_preview_duration": {
+        "name": "Duración máxima de vista previa"
+      },
+      "video_edge_ram_usage": {
+        "name": "Uso de RAM"
+      },
+      "video_edge_record_mode": {
+        "name": "Grabación local",
+        "state": {
+          "disabled": "Desactivada",
+          "on_detection": "Al detectar",
+          "permanent": "Permanente",
+          "unknown": "Desconocido"
+        }
+      },
+      "video_edge_record_policy": {
+        "name": "Grabación NVR",
+        "state": {
+          "always": "Siempre",
+          "unknown": "Desconocido",
+          "when_requested": "Bajo demanda"
+        }
+      },
+      "video_edge_storage_status": {
+        "name": "Estado del almacenamiento",
+        "state": {
+          "formatting": "Formateando",
+          "idle": "Inactivo",
+          "need_format": "Formateo necesario",
+          "none": "Ninguno",
+          "ready": "Listo",
+          "unknown": "Desconocido"
+        }
+      },
+      "video_edge_storage_temperature": {
+        "name": "Temperatura del almacenamiento"
+      },
+      "video_edge_storage_total": {
+        "name": "Almacenamiento total"
+      },
+      "video_edge_uptime": {
+        "name": "Tiempo de actividad"
+      },
+      "video_edge_wifi_signal": {
+        "name": "Señal WiFi de la cámara"
+      },
+      "voltage": {
+        "name": "Voltaje"
+      },
+      "waterstop_external_power": {
+        "name": "Fuente de alimentación",
+        "state": {
+          "no_supply": "Sin alimentación externa",
+          "supply": "Alimentación externa"
+        }
+      },
+      "waterstop_motor_state": {
+        "name": "Estado del motor",
+        "state": {
+          "off": "Detenido",
+          "rotate_to_closing": "Cerrando",
+          "rotate_to_open": "Abriendo"
+        }
+      },
+      "waterstop_prevention_period": {
+        "name": "Período de prevención"
+      },
+      "waterstop_prevention_status": {
+        "name": "Prevención",
+        "state": {
+          "disabled": "Desactivada",
+          "enabled": "Activada"
+        }
+      },
+      "wifi_signal_level": {
+        "name": "Nivel de señal Wi-Fi"
+      }
+    },
+    "switch": {
+      "accelerometer": {
+        "name": "Acelerómetro",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "alert_if_moved": {
+        "name": "Alerta si se mueve",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "alerts_by_sirens": {
+        "name": "Alertas por sirenas",
+        "state": {
+          "off": "Desactivadas",
+          "on": "Activadas"
+        }
+      },
+      "always_active": {
+        "name": "Siempre activo",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "beep_on_arm": {
+        "name": "Pitido armado/desarmado",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "beep_on_arm_disarm": {
+        "name": "Pitido al armar/desarmar",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "beep_on_delay": {
+        "name": "Pitido durante retardo",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "blink_while_armed": {
+        "name": "Parpadear mientras armado",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "child_lock": {
+        "name": "Bloqueo infantil",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "chimes": {
+        "name": "Timbres",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "chimes_enabled": {
+        "name": "Timbre",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "co_alarm_enabled": {
+        "name": "Alarma de CO",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "current_protection": {
+        "name": "Protección de corriente",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "current_threshold": {
+        "name": "Protección por umbral de corriente",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "dimmer_calibration": {
+        "name": "Calibración del regulador",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "external_contact_enabled": {
+        "name": "Contacto externo",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "ignore_impact": {
+        "name": "Ignorar impactos simples",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "indication_enabled": {
+        "name": "Indicación LED",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "indicator_light": {
+        "name": "Indicación LED",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "led_indicator": {
+        "name": "Indicador LED",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "night_mode": {
+        "name": "Armado en modo nocturno",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "security_group": {
+        "name": "Grupo de seguridad",
+        "state_attributes": {
+          "bulk_arm_involved": {
+            "name": "Involucrado en armado global"
+          },
+          "bulk_disarm_involved": {
+            "name": "Involucrado en desarmado global"
+          },
+          "device_count": {
+            "name": "Número de dispositivos"
+          },
+          "group_id": {
+            "name": "ID del grupo"
+          },
+          "group_name": {
+            "name": "Nombre del grupo"
+          },
+          "space_id": {
+            "name": "ID del espacio"
+          },
+          "space_name": {
+            "name": "Nombre del espacio"
+          }
+        }
+      },
+      "shock_sensor": {
+        "name": "Sensor de golpe",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "siren_on_leak": {
+        "name": "Sirena si fuga",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "siren_trigger_acceleration": {
+        "name": "Sirena por aceleración",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "siren_trigger_co": {
+        "name": "Sirena por CO",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "siren_trigger_contact": {
+        "name": "Sirena por contacto",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "siren_trigger_glass": {
+        "name": "Sirena si rotura de cristal",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "siren_trigger_motion": {
+        "name": "Sirena por movimiento",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "siren_trigger_reed": {
+        "name": "Sirena si apertura",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "siren_trigger_shock": {
+        "name": "Sirena si golpe",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "siren_trigger_smoke": {
+        "name": "Sirena por humo",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "siren_trigger_temp_diff": {
+        "name": "Sirena por aumento rápido de temperatura",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "siren_trigger_temperature": {
+        "name": "Sirena por temperatura alta",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "siren_trigger_tilt": {
+        "name": "Sirena si inclinación",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "socket": {
+        "name": "Enchufe",
+        "state_attributes": {
+          "channel_id": {
+            "name": "ID de canal"
+          },
+          "operating_mode": {
+            "name": "Modo de operación"
+          },
+          "output_mode": {
+            "name": "Modo de salida"
+          }
+        }
+      },
+      "state_memory": {
+        "name": "Memoria de estado",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "temp_alarm_enabled": {
+        "name": "Alarma de temperatura alta",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "temp_diff_alarm_enabled": {
+        "name": "Alarma de aumento rápido de temperatura",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      },
+      "tilt_sensor": {
+        "name": "Sensor de inclinación",
+        "state": {
+          "off": "Desactivado",
+          "on": "Activado"
+        }
+      },
+      "voltage_protection": {
+        "name": "Protección de voltaje",
+        "state": {
+          "off": "Desactivada",
+          "on": "Activada"
+        }
+      }
+    },
+    "update": {
+      "hub_firmware": {
+        "name": "Firmware"
+      },
+      "video_edge_firmware": {
+        "name": "Firmware"
+      }
+    },
+    "valve": {
+      "waterstop_valve": {
+        "name": "Válvula de agua"
+      }
+    }
+  },
+  "exceptions": {
+    "arm_disarm_failed": {
+      "message": "No se pudo cambiar el estado de la alarma: {error}"
+    },
+    "device_not_found": {
+      "message": "Dispositivo no encontrado."
+    },
+    "failed_to_change": {
+      "message": "Error al cambiar {entity}: {error}"
+    },
+    "force_arm_failed": {
+      "message": "Error al armar forzado el hub {hub_id}: {error}"
+    },
+    "force_arm_night_failed": {
+      "message": "Error al armar forzado en modo nocturno el hub {hub_id}: {error}"
+    },
+    "hub_not_found": {
+      "message": "Hub no encontrado."
+    },
+    "invalid_target": {
+      "message": "Objetivo no válido para el servicio."
+    },
+    "no_api_key": {
+      "message": "No hay clave API configurada para esta entidad."
+    },
+    "no_hubs_found": {
+      "message": "No se encontraron hubs."
+    },
+    "panic_cooldown": {
+      "message": "Botón de pánico rechazado: espera {seconds} segundos entre pulsaciones para evitar alarmas duplicadas."
+    },
+    "panic_failed": {
+      "message": "Error al activar la alarma de pánico: {error}"
+    },
+    "space_not_found": {
+      "message": "Espacio no encontrado."
+    },
+    "system_armed": {
+      "message": "Sistema armado. Por favor, desarme."
+    }
+  },
+  "issues": {
+    "onvif_init_failed": {
+      "description": "Ajax no ha podido iniciar ONVIF, por lo que las detecciones IA locales (movimiento, humano, vehículo, mascota, timbre) están desactivadas y la integración recurre al sondeo REST en la nube.\n\nError: {error}\n\nComprueba las credenciales RTSP/ONVIF en el paso «Configurar» de la integración y que las cámaras sean accesibles en la red.",
+      "title": "Detecciones IA locales ONVIF no disponibles"
+    },
+    "onvif_no_cameras": {
+      "description": "ONVIF se ha iniciado pero ninguna cámara ha aceptado las credenciales. Las detecciones IA locales (humano, vehículo, mascota, timbre) no se activarán — la API REST en la nube es la única fuente.\n\nVerifica el nombre de usuario y contraseña RTSP/ONVIF en el paso «Configurar», y que los puertos de red de las cámaras (80, 554) sean accesibles desde Home Assistant.",
+      "title": "ONVIF: ninguna cámara conectada"
+    },
+    "onvif_partial_cameras": {
+      "description": "ONVIF ha aceptado las credenciales pero solo {connected} de {total} cámaras han podido conectarse. Las demás cámaras no producirán detecciones IA locales; para ellas la API REST en la nube es la única fuente.\n\nVerifica la red y el soporte ONVIF en las cámaras inalcanzables.",
+      "title": "ONVIF: solo {connected}/{total} cámaras conectadas"
+    },
+    "sqs_init_failed": {
+      "description": "Ajax no ha podido conectar con AWS SQS — las notificaciones de eventos en tiempo real están desactivadas y la integración recurre al sondeo de la API REST (más lento).\n\nError: {error}\n\nVerifica la clave de acceso AWS, la clave secreta y el nombre de la cola en el paso «Configurar» de la integración.",
+      "title": "Eventos en tiempo real AWS SQS no disponibles"
+    },
+    "sse_init_failed": {
+      "description": "Ajax no ha podido conectar con el endpoint SSE — las notificaciones de eventos en tiempo real están desactivadas y la integración recurre al sondeo de la API REST (más lento).\n\nError: {error}\n\nVerifica que la URL del proxy sea accesible y que el token de sesión sea válido (usa «Reconfigurar» para refrescarlo).",
+      "title": "Eventos en tiempo real SSE no disponibles"
+    },
+    "verify_ssl_disabled": {
+      "description": "La integración Ajax se conecta al proxy sin verificar el certificado SSL. Los tokens de sesión y las credenciales viajan por un canal que no puede autenticarse, exponiéndolos a ataques de intermediario. Vuelva a activar «Verificar certificado SSL» en el paso Reconfigurar de la integración en cuanto su proxy tenga un certificado válido.",
+      "title": "La verificación SSL está desactivada"
+    }
+  },
+  "options": {
+    "error": {
+      "invalid_proxy_url": "URL del proxy inválida. La URL debe comenzar con http:// o https://",
+      "no_spaces_selected": "Por favor, seleccione al menos un espacio para activar."
+    },
+    "step": {
+      "aws_credentials": {
+        "data": {
+          "aws_access_key_id": "Clave de acceso AWS",
+          "aws_secret_access_key": "Clave secreta AWS",
+          "queue_name": "Nombre de cola SQS"
+        },
+        "data_description": {
+          "aws_access_key_id": "Ejemplo: AKIA3SFSAKBHLDDOCGFG",
+          "aws_secret_access_key": "Clave secreta proporcionada por Ajax (40 caracteres)",
+          "queue_name": "Ejemplo: ajax-events-V6WHbk3e-prod.fifo"
+        },
+        "description": "Configure las credenciales AWS para recibir eventos en tiempo real.\n\n**Configuración actual:**\n- Clave de acceso: {current_access_key}\n- Clave secreta: {current_secret_key}\n- Cola SQS: {current_queue}\n\nDeje un campo vacío para conservar el valor actual.",
+        "title": "Credenciales AWS SQS"
+      },
+      "enabled_spaces": {
+        "data": {
+          "enabled_spaces": "Espacios activados"
+        },
+        "data_description": {
+          "enabled_spaces": "Solo se cargan los espacios seleccionados; sus dispositivos crean entidades en Home Assistant."
+        },
+        "description": "Seleccione qué espacios activar en Home Assistant.\n\nLos espacios desactivados no crearán dispositivos ni entidades. Cambiar esto recargará la integración.",
+        "title": "Espacios activados"
+      },
+      "init": {
+        "description": "Elija una categoría para configurar",
+        "menu_options": {
+          "aws_credentials": "Credenciales AWS SQS",
+          "enabled_spaces": "Espacios activados",
+          "notifications": "Notificaciones",
+          "polling_settings": "Configuración de polling",
+          "proxy_settings": "Configuración del proxy",
+          "rtsp_credentials": "Credenciales RTSP/ONVIF"
+        },
+        "title": "Opciones Ajax"
+      },
+      "notifications": {
+        "data": {
+          "monitored_spaces": "Espacios a monitorear",
+          "notification_filter": "Filtro de notificaciones",
+          "persistent_notification": "Mostrar notificaciones persistentes"
+        },
+        "data_description": {
+          "monitored_spaces": "Espacios para los que se crean notificaciones. Deje todos seleccionados (o vacío) para recibir notificaciones de todos los espacios.",
+          "notification_filter": "Categorías de eventos que generan una notificación persistente.",
+          "persistent_notification": "Muestra los eventos como notificaciones persistentes en el panel de Home Assistant."
+        },
+        "description": "Configure las notificaciones de su integración Ajax",
+        "title": "Opciones de notificaciones"
+      },
+      "polling_settings": {
+        "data": {
+          "door_sensor_fast_poll": "Polling rápido de sensores de puerta"
+        },
+        "data_description": {
+          "door_sensor_fast_poll": "Consultar sensores de puerta cada 5 segundos cuando está desarmado. Desactivar para reducir llamadas API."
+        },
+        "description": "Configure el comportamiento del polling API para optimizar el rendimiento.\n\n**Comportamiento actual:**\n- Polling ligero (estado del hub + dispositivos): cada 30-60s\n- Actualización completa de metadatos (habitaciones, usuarios, grupos): cada hora",
+        "title": "Configuración de polling"
+      },
+      "proxy_settings": {
+        "data": {
+          "proxy_url": "URL del proxy",
+          "verify_ssl": "Verificar certificado SSL"
+        },
+        "data_description": {
+          "proxy_url": "URL completa de su servidor proxy Ajax",
+          "verify_ssl": "Desactivar para certificados autofirmados"
+        },
+        "description": "Cambie la URL de su servidor proxy Ajax y la configuración SSL.",
+        "title": "Configuración del proxy"
+      },
+      "rtsp_credentials": {
+        "data": {
+          "rtsp_password": "Contraseña ONVIF",
+          "rtsp_username": "Usuario ONVIF"
+        },
+        "data_description": {
+          "rtsp_password": "Contraseña asociada al usuario ONVIF",
+          "rtsp_username": "Usuario creado en la aplicación Ajax para ONVIF"
+        },
+        "description": "Configure las credenciales ONVIF/RTSP para acceder a las transmisiones de las cámaras Video Edge.\n\n**Configuración actual:**\n- Usuario: {current_username}\n- Contraseña: {current_password}\n\n⚠️ Estas credenciales deben crearse en la aplicación Ajax (Cámara → Ajustes → ONVIF).",
+        "title": "Credenciales RTSP/ONVIF"
+      }
+    }
+  },
+  "selector": {
+    "auth_mode": {
+      "options": {
+        "direct": "Directo (Solo clave API empresarial)",
+        "proxy_secure": "Proxy Ajax"
+      }
+    },
+    "dhcp_action": {
+      "options": {
+        "new": "Crear una nueva configuración"
+      }
+    },
+    "notification_filter": {
+      "options": {
+        "alarms_only": "Solo alarmas",
+        "all": "Todas las notificaciones",
+        "none": "Ninguna",
+        "security_events": "Eventos de seguridad (alarmas + armado)"
+      }
+    }
+  },
+  "services": {
+    "force_arm": {
+      "description": "Fuerza el armado del sistema de seguridad, ignorando sensores abiertos y problemas.",
+      "name": "Armado forzado"
+    },
+    "force_arm_night": {
+      "description": "Fuerza la activación del modo nocturno, ignorando sensores abiertos y problemas.",
+      "name": "Modo nocturno forzado"
+    },
+    "get_nvr_recordings": {
+      "description": "Obtiene los datos de grabaciones del NVR desde la API (últimas 24 horas). Guarda la respuesta en ajax_nvr_recordings.json con fines de diagnóstico.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Entrada de integración Ajax a consultar.",
+          "name": "Entrada de integración"
+        }
+      },
+      "name": "Obtener grabaciones NVR"
+    },
+    "get_raw_devices": {
+      "description": "Obtiene los datos JSON brutos de la API para todos los dispositivos. Guarda la respuesta completa en ajax_raw_devices.json.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Entrada de integración Ajax a consultar.",
+          "name": "Entrada de integración"
+        }
+      },
+      "name": "Obtener dispositivos brutos"
+    },
+    "get_smart_locks": {
+      "description": "Obtener datos de los smart locks desde la API y desde los locks descubiertos por SSE/SQS. Guarda la respuesta en ajax_smart_locks.json para diagnóstico.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Entrada de integración Ajax a consultar.",
+          "name": "Entrada de integración"
+        }
+      },
+      "name": "Obtener smart locks"
+    },
+    "refresh_metadata": {
+      "description": "Fuerza una actualización completa de habitaciones, usuarios y grupos desde Ajax.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Entrada de integración Ajax a actualizar.",
+          "name": "Entrada de integración"
+        }
+      },
+      "name": "Actualizar metadatos"
+    }
+  }
+}

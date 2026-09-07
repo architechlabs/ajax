@@ -1,0 +1,517 @@
+"""Ajax integration services.
+
+Registration of the integration-level services (force_arm, force_arm_night,
+get_raw_devices, refresh_metadata, get_nvr_recordings, get_smart_locks) and
+their handler closures. Split out of ``__init__`` so the package entry point
+stays focused on the Home Assistant setup/unload/migrate contract.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+from pathlib import Path
+from typing import Any
+
+import voluptuous as vol
+from homeassistant.components.persistent_notification import async_create
+from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.exceptions import (
+    HomeAssistantError,
+    ServiceValidationError,
+)
+from homeassistant.helpers import (
+    config_validation as cv,
+    entity_registry as er,
+    service as ha_service,
+)
+from homeassistant.helpers.service import (
+    async_extract_config_entry_ids,
+)
+
+from ._raw_inventory import async_collect_raw_inventory
+from .const import (
+    DOMAIN,
+    AjaxConfigEntry,
+)
+from .coordinator import AjaxDataCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+
+
+def _extract_referenced_entity_ids(call: ServiceCall) -> set[str]:
+    """Return the entity ids a service call targets, across HA versions.
+
+    HA 2026.8 removed ``async_extract_referenced_entity_ids`` (and its
+    ``SelectedEntities`` breakdown) and exposes a synchronous
+    ``async_extract_entity_ids(service_call, expand_group) -> set[str]``.
+    Older HA (< 2026.8, down to the integration's 2025.11 floor) still ships
+    the referenced-entity helper, so use it there to preserve the exact prior
+    behaviour (direct + indirectly referenced) and fall back otherwise.
+    """
+    legacy = getattr(ha_service, "async_extract_referenced_entity_ids", None)
+    if legacy is not None:
+        selected = legacy(call.hass, call, expand_group=True)
+        return set(selected.referenced) | set(selected.indirectly_referenced)
+    # Accessed dynamically: the signature changed across HA versions (sync,
+    # ``hass`` dropped in 2026.8), so let this stay untyped rather than pin it
+    # to the stubs of whichever HA version mypy happens to run against.
+    extract_ids = getattr(ha_service, "async_extract_entity_ids")  # noqa: B009
+    return set(extract_ids(call, expand_group=True))
+
+
+# Service names
+SERVICE_FORCE_ARM = "force_arm"
+SERVICE_FORCE_ARM_NIGHT = "force_arm_night"
+SERVICE_GET_RAW_DEVICES = "get_raw_devices"
+SERVICE_REFRESH_METADATA = "refresh_metadata"
+SERVICE_GET_NVR_RECORDINGS = "get_nvr_recordings"
+SERVICE_GET_SMART_LOCKS = "get_smart_locks"
+
+
+async def _async_setup_services(hass: HomeAssistant) -> None:
+    """Set up Ajax services."""
+
+    async def _extract_config_entry(service_call: ServiceCall) -> list[AjaxConfigEntry]:
+        """Extract config entry from the service call."""
+        target_entry_ids = await async_extract_config_entry_ids(service_call)
+        target_entries: list[AjaxConfigEntry] = [
+            loaded_entry
+            for loaded_entry in service_call.hass.config_entries.async_loaded_entries(DOMAIN)
+            if loaded_entry.entry_id in target_entry_ids or target_entry_ids == set()
+        ]
+        if not target_entries:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_target",
+            )
+        return target_entries
+
+    def _resolve_target_spaces(call: ServiceCall, coordinator: AjaxDataCoordinator) -> list[str]:
+        """Resolve target alarm_control_panel entity_ids to a list of space_ids.
+
+        Falls back to all spaces only if no target was specified.
+        """
+        if coordinator.account is None:
+            return []
+        account = coordinator.account
+        referenced = _extract_referenced_entity_ids(call)
+        if not referenced:
+            return list(account.spaces.keys())
+
+        registry = er.async_get(call.hass)
+        space_ids: list[str] = []
+        for entity_id in referenced:
+            entry = registry.async_get(entity_id)
+            if entry is None or entry.domain != "alarm_control_panel":
+                continue
+            uid = entry.unique_id or ""
+            # Group panels (f"{entry_id}_group_alarm_{group_id}") are NOT valid
+            # force-arm targets — Ajax has no per-group force-arm API. Their
+            # unique_id also contains "_alarm_", so skip them explicitly before
+            # the marker parse or a group_id would be misread as a space_id.
+            if "_group_alarm_" in uid:
+                _LOGGER.warning(
+                    "force_arm targets the group panel %s — group panels are not supported, target the space panel",
+                    entity_id,
+                )
+                continue
+            # Main space panel unique_id: f"{entry_id}_alarm_{space_id}"
+            marker = "_alarm_"
+            if marker in uid:
+                space_id = uid.rsplit(marker, 1)[-1]
+                if space_id in account.spaces:
+                    space_ids.append(space_id)
+        return space_ids
+
+    async def handle_force_arm(call: ServiceCall) -> None:
+        """Handle force arm service call."""
+        _LOGGER.info("Force arming via service call")
+
+        entries = await _extract_config_entry(call)
+        any_target_resolved = False
+        failures: list[tuple[str, str]] = []
+        for entry in entries:
+            coordinator = entry.runtime_data
+            if not coordinator.account or not coordinator.account.spaces:
+                continue
+            target_spaces = _resolve_target_spaces(call, coordinator)
+            if not target_spaces:
+                continue
+            any_target_resolved = True
+            for hub_id in target_spaces:
+                try:
+                    await coordinator.async_arm_space(hub_id)
+                    await coordinator.async_request_refresh()
+                    _LOGGER.info("Force armed hub %s", hub_id)
+                except Exception as err:
+                    _LOGGER.error("Failed to force arm hub %s: %s", hub_id, err)
+                    failures.append((hub_id, str(err)))
+
+        if not any_target_resolved:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_target",
+            )
+        if failures:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="force_arm_failed",
+                translation_placeholders={
+                    "hub_id": ", ".join(hub_id for hub_id, _ in failures),
+                    "error": "; ".join(f"{hub_id}: {error}" for hub_id, error in failures),
+                },
+            )
+
+    async def handle_force_arm_night(call: ServiceCall) -> None:
+        """Handle force arm night mode service call."""
+        _LOGGER.info("Force arming night mode via service call")
+
+        entries = await _extract_config_entry(call)
+        any_target_resolved = False
+        failures: list[tuple[str, str]] = []
+        for entry in entries:
+            coordinator = entry.runtime_data
+            if not coordinator.account or not coordinator.account.spaces:
+                continue
+            target_spaces = _resolve_target_spaces(call, coordinator)
+            if not target_spaces:
+                continue
+            any_target_resolved = True
+            for hub_id in target_spaces:
+                try:
+                    await coordinator.async_arm_night_mode(hub_id, force=True)
+                    await coordinator.async_request_refresh()
+                    _LOGGER.info("Force armed night mode hub %s", hub_id)
+                except Exception as err:
+                    _LOGGER.error("Failed to force arm night mode hub %s: %s", hub_id, err)
+                    failures.append((hub_id, str(err)))
+
+        if not any_target_resolved:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_target",
+            )
+        if failures:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="force_arm_night_failed",
+                translation_placeholders={
+                    "hub_id": ", ".join(hub_id for hub_id, _ in failures),
+                    "error": "; ".join(f"{hub_id}: {error}" for hub_id, error in failures),
+                },
+            )
+
+    async def handle_get_raw_devices(call: ServiceCall) -> None:
+        """Handle get raw devices service call - get full raw API data for all devices."""
+        _LOGGER.info("Getting full raw data for all devices, cameras, and video edges")
+
+        all_devices: list[dict[str, Any]] = []
+        all_cameras: list[dict[str, Any]] = []
+        all_video_edges: list[dict[str, Any]] = []
+        hub_count = 0
+
+        entries = await _extract_config_entry(call)
+        for entry in entries:
+            coordinator = entry.runtime_data
+            if not coordinator.account:
+                continue
+            inventory = await async_collect_raw_inventory(coordinator)
+            all_devices += inventory["devices"]
+            all_cameras += inventory["cameras"]
+            all_video_edges += inventory["video_edges"]
+            hub_count += inventory["hub_count"]
+
+        # Write to file (include devices, cameras, and video edges).
+        # Redact sensitive fields before writing so the file is safe to share.
+        from homeassistant.components.diagnostics import async_redact_data
+
+        from .diagnostics import TO_REDACT
+
+        output_path = Path(hass.config.path("ajax_raw_devices.json"))
+        output_data = {
+            "devices": async_redact_data(all_devices, TO_REDACT),
+            "cameras": async_redact_data(all_cameras, TO_REDACT),
+            "video_edges": async_redact_data(all_video_edges, TO_REDACT),
+        }
+
+        def write_json() -> None:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(output_data, f, indent=2, default=str, ensure_ascii=False)
+
+        await hass.async_add_executor_job(write_json)
+
+        _LOGGER.info(
+            "Raw data written to %s (%d devices, %d cameras, %d video edges)",
+            output_path,
+            len(all_devices),
+            len(all_cameras),
+            len(all_video_edges),
+        )
+
+        # Create notification with summary
+
+        # Count device types
+        type_counts: dict[str, int] = {}
+        for device in all_devices:
+            dtype = device.get("deviceType", "unknown")
+            type_counts[dtype] = type_counts.get(dtype, 0) + 1
+
+        type_list = "\n".join(f"- {t}: {c}" for t, c in sorted(type_counts.items()))
+
+        message = (
+            f"**Hubs:** {hub_count}\n"
+            f"**Devices:** {len(all_devices)}\n"
+            f"**Cameras:** {len(all_cameras)}\n"
+            f"**Video Edges:** {len(all_video_edges)}\n\n"
+            f"**Device types:**\n{type_list}\n\n"
+            f"Saved to: {output_path}"
+        )
+
+        async_create(
+            hass,
+            message,
+            title="Ajax Raw Devices",
+            notification_id="ajax_get_raw_devices",
+        )
+
+    # Register services if not already registered
+    if not hass.services.has_service(DOMAIN, SERVICE_FORCE_ARM):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_FORCE_ARM,
+            handle_force_arm,
+            schema=vol.Schema({vol.Optional("entity_id"): cv.entity_ids}),
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_FORCE_ARM_NIGHT):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_FORCE_ARM_NIGHT,
+            handle_force_arm_night,
+            schema=vol.Schema({vol.Optional("entity_id"): cv.entity_ids}),
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_RAW_DEVICES):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_RAW_DEVICES,
+            handle_get_raw_devices,
+        )
+
+    async def handle_refresh_metadata(call: ServiceCall) -> None:
+        """Handle refresh metadata service call - force full metadata refresh."""
+        _LOGGER.info("Forcing full metadata refresh via service call")
+
+        entries = await _extract_config_entry(call)
+        for entry in entries:
+            coordinator = entry.runtime_data
+            await coordinator.async_force_metadata_refresh()
+
+        async_create(
+            hass,
+            "Full metadata refresh completed (rooms, users, groups)",
+            title="Ajax Refresh",
+            notification_id="ajax_refresh_metadata",
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_REFRESH_METADATA):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_REFRESH_METADATA,
+            handle_refresh_metadata,
+        )
+
+    async def handle_get_nvr_recordings(call: ServiceCall) -> None:
+        """Handle get NVR recordings service call - diagnostic tool to test API."""
+        from datetime import UTC, datetime, timedelta
+
+        _LOGGER.info("Getting NVR recordings data for diagnostic purposes")
+
+        entries = await _extract_config_entry(call)
+
+        # Find NVRs and their cameras
+        nvr_data: list[dict[str, Any]] = []
+
+        for entry in entries:
+            coordinator = entry.runtime_data
+            if not coordinator.account:
+                continue
+            for _space_id, space in coordinator.account.spaces.items():
+                for ve_id, video_edge in space.video_edges.items():
+                    if video_edge.video_edge_type.value == "NVR":
+                        # Found an NVR
+                        recordings_list: list[dict[str, Any]] = []
+                        nvr_info: dict[str, Any] = {
+                            "nvr_id": ve_id,
+                            "nvr_name": video_edge.name,
+                            "channels": video_edge.channels or [],
+                            "recordings": recordings_list,
+                        }
+
+                        # Get recordings for the last 24 hours
+                        end_time = datetime.now(UTC)
+                        start_time = end_time - timedelta(hours=24)
+
+                        # Try to get recordings for each channel
+                        for channel in video_edge.channels or []:
+                            camera_id = channel.get("id") if isinstance(channel, dict) else None
+                            if camera_id:
+                                try:
+                                    recordings = await coordinator.api.async_get_nvr_recordings(
+                                        nvr_id=ve_id,
+                                        camera_id=camera_id,
+                                        start=start_time.isoformat(),
+                                        end=end_time.isoformat(),
+                                    )
+                                    nvr_info["recordings"].append(
+                                        {
+                                            "camera_id": camera_id,
+                                            "camera_name": channel.get("name", "Unknown"),
+                                            "data": recordings,
+                                        }
+                                    )
+                                    _LOGGER.info(
+                                        "Got %d recordings for camera %s",
+                                        len(recordings) if isinstance(recordings, list) else 1,
+                                        camera_id,
+                                    )
+                                except Exception as err:
+                                    _LOGGER.warning(
+                                        "Failed to get recordings for camera %s: %s",
+                                        camera_id,
+                                        err,
+                                    )
+                                    nvr_info["recordings"].append(
+                                        {
+                                            "camera_id": camera_id,
+                                            "camera_name": channel.get("name", "Unknown"),
+                                            "error": str(err),
+                                        }
+                                    )
+
+                        nvr_data.append(nvr_info)
+
+        # Write to file.
+        # Redact sensitive fields before writing so the file is safe to share.
+        from homeassistant.components.diagnostics import async_redact_data
+
+        from .diagnostics import TO_REDACT
+
+        output_path = Path(hass.config.path("ajax_nvr_recordings.json"))
+        redacted_nvr_data = async_redact_data(nvr_data, TO_REDACT)
+
+        def write_json() -> None:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(redacted_nvr_data, f, indent=2, default=str, ensure_ascii=False)
+
+        await hass.async_add_executor_job(write_json)
+
+        # Create notification
+        nvr_count = len(nvr_data)
+        total_recordings = sum(
+            len(rec.get("data", [])) if isinstance(rec.get("data"), list) else 0
+            for nvr in nvr_data
+            for rec in nvr.get("recordings", [])
+        )
+
+        message = (
+            f"**NVRs found:** {nvr_count}\n"
+            f"**Total recordings (last 24h):** {total_recordings}\n\n"
+            f"Saved to: {output_path}\n\n"
+            "Check the JSON file for the full API response structure."
+        )
+
+        async_create(
+            hass,
+            message,
+            title="Ajax NVR Recordings",
+            notification_id="ajax_nvr_recordings",
+        )
+
+        _LOGGER.info("NVR recordings data written to %s", output_path)
+
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_NVR_RECORDINGS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_NVR_RECORDINGS,
+            handle_get_nvr_recordings,
+        )
+
+    async def handle_get_smart_locks(call: ServiceCall) -> None:
+        """Handle get smart locks service call - diagnostic tool for smart lock data."""
+        _LOGGER.info("Getting smart lock data for diagnostic purposes")
+
+        entries = await _extract_config_entry(call)
+
+        smart_locks_data: list[dict[str, Any]] = []
+
+        for entry in entries:
+            coordinator = entry.runtime_data
+            if not coordinator.account:
+                continue
+            for _space_id, space in coordinator.account.spaces.items():
+                real_space_id = space.real_space_id
+                if not real_space_id:
+                    _LOGGER.debug("No real_space_id for space %s, skipping", space.name)
+                    continue
+
+                # Get raw API data for smart locks
+                try:
+                    api_smart_locks = await coordinator.api.async_get_smart_locks(real_space_id)
+                    for sl in api_smart_locks:
+                        sl["_source"] = "api"
+                        sl["_space_name"] = space.name
+                        sl["_space_id"] = _space_id
+                        smart_locks_data.append(sl)
+                except Exception as err:
+                    _LOGGER.warning(
+                        "Failed to get smart locks from API for space %s: %s",
+                        space.name,
+                        err,
+                    )
+
+
+        # Write to file.
+        # Redact sensitive fields before writing so the file is safe to share.
+        from homeassistant.components.diagnostics import async_redact_data
+
+        from .diagnostics import TO_REDACT
+
+        output_path = Path(hass.config.path("ajax_smart_locks.json"))
+        redacted_smart_locks = async_redact_data(smart_locks_data, TO_REDACT)
+
+        def write_json() -> None:
+            with open(output_path, "w", encoding="utf-8") as f:
+                json.dump(redacted_smart_locks, f, indent=2, default=str, ensure_ascii=False)
+
+        await hass.async_add_executor_job(write_json)
+
+        api_count = len(smart_locks_data)
+
+        message = (
+            f"**Smart locks found:** {len(smart_locks_data)}\n"
+            f"- From official Ajax REST API: {api_count}\n\n"
+            f"Saved to: {output_path}\n\n"
+            "Check the JSON file for full details including all API fields."
+        )
+
+        async_create(
+            hass,
+            message,
+            title="Ajax Smart Locks",
+            notification_id="ajax_get_smart_locks",
+        )
+
+        _LOGGER.info(
+            "Smart locks data written to %s (%d from official Ajax REST API)",
+            output_path,
+            api_count,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_GET_SMART_LOCKS):
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_GET_SMART_LOCKS,
+            handle_get_smart_locks,
+        )

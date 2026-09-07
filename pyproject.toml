@@ -1,0 +1,89 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "SIM",    # flake8-simplify
+    "TC004",  # flake8-type-checking: runtime use of a TYPE_CHECKING-only
+              # import. This is the exact regression that broke #149
+              # (SecurityState used at runtime but imported under
+              # TYPE_CHECKING). We deliberately do NOT enable TC001/2/3
+              # (the "move INTO type-checking" rules): pushing a
+              # runtime-needed import into TYPE_CHECKING is how #149 happened,
+              # and ruff classifies those as unsafe fixes.
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # do not perform function calls in argument defaults
+    "SIM108", # use ternary operator instead of if-else
+]
+
+[tool.ruff.lint.isort]
+force-single-line = false
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = ["B101", "B105", "B110"]  # assert_used, hardcoded_password (config key names), try_except_pass
+
+[tool.codespell]
+# French/Spanish/German/Dutch/Swedish/Ukrainian words in translations - not typos
+ignore-words-list = "hass,groupe,connexion,vie,appareil,inclinaison,mouvement,normale,confort,chambre,auxiliar,doble,mis,foto,thuis,intervall,nd,offen,temperatur,szenario,rauchkammer,ven,rauch,anstieg,scharf"
+skip = ".git,*.json,*.lock"
+
+[tool.coverage.run]
+source = ["custom_components/ajax"]
+omit = [
+    "tests/*",
+    # Vendored / generated tables: no business logic worth covering line by line.
+    "custom_components/ajax/event_codes.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+# ---------------------------------------------------------------------------
+# mypy — strict mode on (Quality Scale Platinum `strict-typing`).
+#
+# The full --strict flag set is enabled; the only carve-out is
+# warn_return_any, which we tag inline with `# type: ignore[no-any-return]`
+# at the boundary where an Ajax API JSON payload (`dict.get(...)` /
+# `response[...]`) is downcast to the declared concrete type. CI fails
+# on any new error here.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+# 3.14 matches the runtime the integration targets. Under follow_imports,
+# mypy parses Home Assistant's own source — on 3.13 it rejected HA's 3.14-only
+# syntax (parenthesis-less `except`); 3.14 parses it cleanly.
+python_version = "3.14"
+follow_imports = "silent"
+ignore_missing_imports = true
+strict = true
+
+# Allow re-exporting from homeassistant.* even when the upstream module
+# omits the explicit `__all__` entry. The HA team does not always update
+# `__all__` when they move a public symbol; under --strict, every such
+# import (EntityCategory, AlarmControlPanelState, DOMAIN, ...) is flagged
+# as attr-defined. Trusting HA's flat package surface is the pragmatic
+# call — the alternative is dozens of pinpoint `type: ignore`.
+[[tool.mypy.overrides]]
+module = "homeassistant.*"
+implicit_reexport = true

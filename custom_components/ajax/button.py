@@ -1,0 +1,132 @@
+"""Ajax button platform."""
+
+from __future__ import annotations
+
+import logging
+import time
+
+from homeassistant.components.button import ButtonEntity
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from . import AjaxConfigEntry
+from ._discovery import connect_new_entity_signal
+from ._ids import device_identifier
+from .const import DOMAIN, MANUFACTURER, SIGNAL_NEW_SPACE
+from .coordinator import AjaxDataCoordinator
+
+_LOGGER = logging.getLogger(__name__)
+PARALLEL_UPDATES = 1
+
+# Anti-rebound: a panic press relays to the monitoring company and can
+# generate a billable false dispatch. Reject repeats within this window
+# so a stuck automation or accidental double-tap costs nothing.
+PANIC_COOLDOWN_SECONDS = 5.0
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: AjaxConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up Ajax buttons from a config entry."""
+    coordinator = entry.runtime_data
+
+    # Create a panic button for each space
+    entities = []
+
+    if coordinator.account:
+        for space_id, _space in coordinator.account.spaces.items():
+            entities.append(AjaxPanicButton(coordinator, entry, space_id))
+
+    if entities:
+        async_add_entities(entities)
+        _LOGGER.info("Added %d Ajax button(s)", len(entities))
+    else:
+        _LOGGER.info("No Ajax spaces found, no buttons created (yet)")
+
+    def _build_space(space_id: str, _obj_id: str) -> list[tuple[str, ButtonEntity]]:
+        """Build the panic button for a hub added after startup (#multi-hub)."""
+        if coordinator.get_space(space_id) is None:
+            return []
+        return [(f"panic_{space_id}", AjaxPanicButton(coordinator, entry, space_id))]
+
+    connect_new_entity_signal(
+        hass,
+        entry,
+        SIGNAL_NEW_SPACE,
+        "button",
+        async_add_entities,
+        _build_space,
+        label="panic button(s)",
+    )
+
+
+class AjaxPanicButton(CoordinatorEntity[AjaxDataCoordinator], ButtonEntity):
+    """Representation of an Ajax panic button.
+
+    Disabled by default to avoid accidental taps that would trigger a
+    real alarm. Users must explicitly enable the entity.
+    """
+
+    # No device_class: IDENTIFY is semantically "flash the device to find it",
+    # which does not match the destructive nature of a panic trigger.
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: AjaxDataCoordinator, entry: AjaxConfigEntry, space_id: str) -> None:
+        """Initialize the panic button."""
+        super().__init__(coordinator)
+        self._entry = entry
+        self._space_id = space_id
+        self._last_press_ts: float = 0.0
+
+        self._attr_unique_id = f"{entry.entry_id}_panic_{space_id}"
+        self._attr_translation_key = "panic"
+        self._attr_has_entity_name = True
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        now = time.monotonic()
+        if now - self._last_press_ts < PANIC_COOLDOWN_SECONDS:
+            _LOGGER.warning("Panic button rejected (cooldown active) for space %s", self._space_id)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="panic_cooldown",
+                translation_placeholders={"seconds": str(int(PANIC_COOLDOWN_SECONDS))},
+            )
+        previous_ts = self._last_press_ts
+        self._last_press_ts = now
+
+        _LOGGER.warning("Panic button pressed for space %s", self._space_id)
+
+        try:
+            await self.coordinator.async_press_panic_button(self._space_id)
+        except Exception as err:
+            # The panic never fired — don't burn the cooldown, so the user can
+            # retry immediately after a transient API failure during an emergency.
+            self._last_press_ts = previous_ts
+            _LOGGER.error("Failed to trigger panic: %s", err)
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="panic_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
+
+    @property
+    def device_info(self) -> DeviceInfo | None:
+        """Return device information."""
+        space = self.coordinator.get_space(self._space_id)
+        if not space:
+            return None
+
+        return DeviceInfo(
+            identifiers={device_identifier(self.coordinator.entry_id, self._space_id)},
+            name=space.name,
+            manufacturer=MANUFACTURER,
+            model="Security Hub",
+        )

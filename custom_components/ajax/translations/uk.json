@@ -1,0 +1,1747 @@
+{
+  "config": {
+    "abort": {
+      "already_configured": "Ця інтеграція Ajax вже налаштована.",
+      "api_not_initialized": "Не вдалося ініціалізувати клієнт API Ajax. Будь ласка, перезапустіть налаштування.",
+      "hub_associated": "Хаб пов'язано з існуючою конфігурацією.",
+      "no_spaces_available": "Немає доступних просторів. Будь ласка, перезавантажте інтеграцію.",
+      "reauth_failed": "Повторна автентифікація не вдалася. Будь ласка, переналаштуйте інтеграцію.",
+      "reauth_successful": "Повторна автентифікація успішна.",
+      "wrong_account": "Введений обліковий запис не збігається з обліковим записом, налаштованим для цього запису. Щоб використати інший обліковий запис Ajax, додайте новий запис інтеграції."
+    },
+    "error": {
+      "cannot_connect": "Не вдалося підключитися до Ajax API. Перевірте підключення до інтернету.",
+      "entry_not_found": "Конфігурацію не знайдено. Будь ласка, спробуйте ще раз.",
+      "invalid_account_type": "Тип облікового запису не підтримується. Використовуйте обліковий запис користувача (не PRO/Enterprise).",
+      "invalid_api_key": "Невірний або відсутній API-ключ. Перевірте ваш корпоративний API-ключ.",
+      "invalid_auth": "Невірні облікові дані API. Перевірте ваш API-ключ, електронну пошту та пароль.",
+      "invalid_password": "Невірна електронна пошта або пароль. Перевірте дані вашого облікового запису Ajax.",
+      "invalid_proxy_url": "Невірна URL-адреса проксі. URL має починатися з http:// або https://",
+      "invalid_totp_secret": "Недійсний TOTP-секрет. Введіть ключ Base32, показаний під час увімкнення двофакторної автентифікації.",
+      "no_spaces_selected": "Будь ласка, виберіть принаймні один простір для активації.",
+      "unknown": "Несподівана помилка. Перевірте журнали для отримання додаткової інформації."
+    },
+    "step": {
+      "dhcp_confirm": {
+        "data": {
+          "action": "Дія"
+        },
+        "description": "У вашій мережі виявлено хаб Ajax ({hostname}) з MAC-адресою {mac}.\n\nБажаєте пов'язати його з існуючою конфігурацією чи створити нову?",
+        "title": "Виявлено хаб Ajax"
+      },
+      "direct": {
+        "data": {
+          "api_key": "API-ключ",
+          "aws_access_key_id": "AWS Access Key ID (Необов'язково)",
+          "aws_secret_access_key": "AWS Secret Access Key (Необов'язково)",
+          "email": "Електронна пошта",
+          "password": "Пароль",
+          "queue_name": "Назва черги SQS (Необов'язково)",
+          "totp_secret": "Секрет двофакторної автентифікації (необов'язково)"
+        },
+        "data_description": {
+          "api_key": "Ваш API-ключ, наданий Ajax Systems",
+          "aws_access_key_id": "AWS Access Key ID для подій SQS в реальному часі",
+          "aws_secret_access_key": "AWS Secret Access Key для подій SQS в реальному часі",
+          "email": "Електронна пошта вашого облікового запису Ajax",
+          "password": "Пароль вашого облікового запису Ajax",
+          "queue_name": "Назва черги SQS (наприклад, ajax-events-xxxxx-prod.fifo)",
+          "totp_secret": "Ключ Base32 з налаштувань вашого застосунку автентифікації. Залиште порожнім, якщо 2FA не увімкнено для вашого облікового запису Ajax."
+        },
+        "description": "Введіть облікові дані Ajax API.\n\n⚠️ **Тільки обліковий запис користувача** (не PRO/Enterprise).\n\nНеобов'язково: додайте облікові дані AWS для сповіщень про події в реальному часі.",
+        "title": "Пряме підключення"
+      },
+      "proxy": {
+        "data": {
+          "email": "Електронна пошта",
+          "password": "Пароль",
+          "proxy_url": "URL-адреса проксі",
+          "totp_secret": "Секрет двофакторної автентифікації (необов'язково)",
+          "verify_ssl": "Перевірка SSL-сертифіката"
+        },
+        "data_description": {
+          "email": "Електронна пошта вашого облікового запису Ajax",
+          "password": "Пароль вашого облікового запису Ajax",
+          "proxy_url": "URL-адреса проксі-сервера Ajax",
+          "totp_secret": "Ключ Base32 з налаштувань вашого застосунку автентифікації. Залиште порожнім, якщо 2FA не увімкнено для вашого облікового запису Ajax.",
+          "verify_ssl": "Вимкніть при використанні самопідписаного сертифіката (HTTPS)"
+        },
+        "description": "Підключення через проксі-сервер Ajax.\n\n⚠️ **Тільки обліковий запис користувача** (не PRO/Enterprise).\n\nПодії будуть отримуватися в реальному часі через SSE.",
+        "title": "Підключення через проксі"
+      },
+      "reauth_confirm": {
+        "data": {
+          "password": "Пароль",
+          "totp_secret": "Секрет двофакторної автентифікації (необов'язково)"
+        },
+        "data_description": {
+          "totp_secret": "Ключ Base32 з налаштувань вашого застосунку автентифікації. Залиште порожнім, якщо 2FA не увімкнено для вашого облікового запису Ajax."
+        },
+        "description": "Ваша сесія закінчилася. Будь ласка, введіть пароль для {email} ще раз.",
+        "title": "Повторна автентифікація"
+      },
+      "reconfigure": {
+        "data": {
+          "api_key": "API-ключ",
+          "email": "Електронна пошта",
+          "password": "Пароль",
+          "proxy_url": "URL-адреса проксі",
+          "totp_secret": "Секрет двофакторної автентифікації (необов'язково)",
+          "verify_ssl": "Перевірка SSL-сертифіката"
+        },
+        "data_description": {
+          "totp_secret": "Ключ Base32 з налаштувань вашого застосунку автентифікації. Залиште порожнім, якщо 2FA не увімкнено для вашого облікового запису Ajax.",
+          "verify_ssl": "Вимкніть, якщо проксі використовує самопідписаний сертифікат."
+        },
+        "description": "Оновіть ваші облікові дані Ajax.",
+        "title": "Переналаштування Ajax"
+      },
+      "select_spaces": {
+        "data": {
+          "enabled_spaces": "Увімкнені простори"
+        },
+        "description": "Знайдено {space_count} просторів. Виберіть, які простори увімкнути в Home Assistant.\n\nНевибрані простори не створюватимуть пристрої чи сутності.",
+        "title": "Вибір просторів"
+      },
+      "user": {
+        "data": {
+          "auth_mode": "Режим автентифікації"
+        },
+        "data_description": {
+          "auth_mode": "Проксі: підключення через проксі-сервер Ajax. Пряме: тільки корпоративний API-ключ."
+        },
+        "description": "Виберіть спосіб підключення до Ajax Systems.",
+        "title": "Режим підключення"
+      }
+    }
+  },
+  "entity": {
+    "alarm_control_panel": {
+      "ajax": {
+        "name": "Ajax",
+        "state": {
+          "armed": "Під охороною",
+          "arming": "Постановка на охорону",
+          "disarmed": "Знято з охорони",
+          "disarming": "Зняття з охорони",
+          "pending": "Очікування",
+          "triggered": "Тривога"
+        },
+        "state_attributes": {
+          "hub_connection_status": {
+            "name": "Стан підключення хаба",
+            "state": {
+              "offline": "Офлайн",
+              "online": "Онлайн",
+              "unknown": "Невідомо"
+            }
+          },
+          "malfunctions_count": {
+            "name": "Несправності"
+          },
+          "new_notifications_count": {
+            "name": "Нові сповіщення"
+          },
+          "security_state": {
+            "name": "Стан охорони",
+            "state": {
+              "armed": "Під охороною",
+              "arming_incomplete": "Постановка не завершена",
+              "awaiting_confirmation": "Очікування підтвердження",
+              "awaiting_exit_timer": "Очікування таймера виходу",
+              "awaiting_vds_arming_completion": "Очікування завершення VDS",
+              "disarmed": "Знято з охорони",
+              "night_mode": "Нічний режим",
+              "none": "Немає",
+              "partially_armed": "Часткова охорона",
+              "two_stage_arming_incomplete": "Двоетапна постановка не завершена"
+            }
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "battery_connected": {
+        "name": "Батарея хаба"
+      },
+      "beep_on_arm": {
+        "name": "Звук при постановці/знятті"
+      },
+      "beep_on_delay": {
+        "name": "Звук при затримці входу/виходу"
+      },
+      "co2_problem": {
+        "name": "Рівень CO₂",
+        "state": {
+          "off": "Нормальний",
+          "on": "Високий CO₂"
+        }
+      },
+      "connection": {
+        "name": "Підключення хаба",
+        "state": {
+          "off": "Відключено",
+          "on": "Підключено"
+        }
+      },
+      "current_limit": {
+        "name": "Захист від струму",
+        "state": {
+          "off": "Нормальний",
+          "on": "Досягнуто межу струму"
+        }
+      },
+      "data_channel_ok": {
+        "name": "Канал даних",
+        "state": {
+          "off": "Проблема",
+          "on": "OK"
+        }
+      },
+      "doorbell_ring": {
+        "name": "Дверний дзвінок"
+      },
+      "external_contact": {
+        "name": "Двері (зовнішній контакт)"
+      },
+      "external_power": {
+        "name": "Зовнішнє живлення"
+      },
+      "externally_powered": {
+        "name": "Зовнішнє живлення"
+      },
+      "glass_break": {
+        "name": "Датчик розбиття скла"
+      },
+      "gsm_antenna": {
+        "name": "GSM антена"
+      },
+      "high_temperature": {
+        "name": "Висока температура",
+        "state": {
+          "off": "Нормальна",
+          "on": "Перевищено поріг температури"
+        }
+      },
+      "humidity_problem": {
+        "name": "Вологість",
+        "state": {
+          "off": "Нормальна",
+          "on": "Поза діапазоном"
+        }
+      },
+      "jeweller_radio": {
+        "name": "Jeweller радіо"
+      },
+      "mcp_fire_alarm": {
+        "name": "Пожежна тривога",
+        "state": {
+          "off": "Нормальний",
+          "on": "Тривога спрацювала"
+        }
+      },
+      "problem": {
+        "name": "Виявлено проблему",
+        "state_attributes": {
+          "devices_with_problems": {
+            "name": "Пристрої з проблемами"
+          },
+          "problem_devices": {
+            "name": "Список проблемних пристроїв"
+          },
+          "total_malfunctions": {
+            "name": "Загальна кількість несправностей"
+          }
+        }
+      },
+      "rapid_temperature_rise": {
+        "name": "Швидке підвищення температури",
+        "state": {
+          "off": "Нормальне",
+          "on": "Виявлено швидке підвищення температури"
+        }
+      },
+      "shock": {
+        "name": "Удар"
+      },
+      "smart_lock_door": {
+        "name": "Двері",
+        "state": {
+          "off": "Зачинено",
+          "on": "Відчинено"
+        }
+      },
+      "steam": {
+        "name": "Виявлено пару",
+        "state": {
+          "off": "Чисто",
+          "on": "Виявлено пару"
+        }
+      },
+      "system_problems": {
+        "name": "Системні проблеми",
+        "state": {
+          "off": "Немає проблем",
+          "on": "Виявлено проблеми"
+        },
+        "state_attributes": {
+          "devices_with_problems": {
+            "name": "Пристрої з проблемами"
+          },
+          "problem_devices": {
+            "name": "Список пристроїв"
+          },
+          "total_malfunctions": {
+            "name": "Загальна кількість несправностей"
+          }
+        }
+      },
+      "temperature_limit": {
+        "name": "Захист від температури",
+        "state": {
+          "off": "Нормальний",
+          "on": "Досягнуто межу температури"
+        }
+      },
+      "temperature_problem": {
+        "name": "Температура",
+        "state": {
+          "off": "Нормальна",
+          "on": "Поза діапазоном"
+        }
+      },
+      "tilt": {
+        "name": "Нахил"
+      },
+      "video_edge_lid_closed": {
+        "name": "Кришка",
+        "state": {
+          "off": "Закрита",
+          "on": "Відкрита"
+        }
+      },
+      "video_edge_onvif_enabled": {
+        "name": "Інтеграція ONVIF",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "video_human": {
+        "name": "Виявлення людини",
+        "state": {
+          "off": "Немає",
+          "on": "Виявлено людину"
+        }
+      },
+      "video_line_crossing": {
+        "name": "Перетин лінії",
+        "state": {
+          "off": "Немає",
+          "on": "Виявлено"
+        }
+      },
+      "video_motion": {
+        "name": "Виявлення руху",
+        "state": {
+          "off": "Немає",
+          "on": "Виявлено рух"
+        }
+      },
+      "video_pet": {
+        "name": "Виявлення тварини",
+        "state": {
+          "off": "Немає",
+          "on": "Виявлено тварину"
+        }
+      },
+      "video_vehicle": {
+        "name": "Виявлення транспорту",
+        "state": {
+          "off": "Немає",
+          "on": "Виявлено транспорт"
+        }
+      },
+      "waterstop_temp_protect": {
+        "name": "Захист від замерзання",
+        "state": {
+          "off": "Неактивний",
+          "on": "Активний"
+        }
+      },
+      "wings_radio": {
+        "name": "Wings радіо"
+      }
+    },
+    "button": {
+      "panic": {
+        "name": "Тривожна кнопка"
+      }
+    },
+    "camera": {
+      "camera_sub_stream": {
+        "name": "Додатковий потік"
+      },
+      "nvr_channel": {
+        "name": "Канал {number}"
+      },
+      "nvr_channel_sub": {
+        "name": "Канал {number} Додатковий"
+      }
+    },
+    "device_tracker": {
+      "position": {
+        "name": "Позиція"
+      }
+    },
+    "event": {
+      "button_press": {
+        "name": "Кнопка",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "double_press": "Подвійне натискання",
+              "emergency": "Екстрена ситуація",
+              "long_press": "Довге натискання",
+              "panic": "Паніка",
+              "single_press": "Одинарне натискання"
+            }
+          }
+        }
+      },
+      "camera_detection": {
+        "name": "Виявлення",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "human": "Людина",
+              "line_crossing": "Перетин лінії",
+              "motion": "Рух",
+              "pet": "Тварина",
+              "vehicle": "Транспорт"
+            }
+          }
+        }
+      },
+      "doorbell_press": {
+        "name": "Дверний дзвінок",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "ring": "Дзвінок"
+            }
+          }
+        }
+      },
+      "smart_lock_event": {
+        "name": "Подія",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "door_left_open": "Двері залишилися відчиненими",
+              "ring": "Дзвінок натиснуто"
+            }
+          }
+        }
+      }
+    },
+    "light": {
+      "dimmer_light": {
+        "name": "Димер"
+      }
+    },
+    "lock": {
+      "smart_lock": {
+        "name": "Замок"
+      }
+    },
+    "number": {
+      "arm_brightness": {
+        "name": "Яскравість під охороною"
+      },
+      "brightness_change_speed": {
+        "name": "Швидкість зміни яскравості"
+      },
+      "current_threshold": {
+        "name": "Межа струму"
+      },
+      "disarm_brightness": {
+        "name": "Яскравість без охорони"
+      },
+      "led_brightness_level": {
+        "name": "Яскравість LED"
+      },
+      "max_brightness": {
+        "name": "Максимальна яскравість"
+      },
+      "min_brightness": {
+        "name": "Мінімальна яскравість"
+      },
+      "tilt_degrees": {
+        "name": "Поріг нахилу"
+      },
+      "touch_sensitivity": {
+        "name": "Чутливість дотику"
+      }
+    },
+    "select": {
+      "alarm_duration_select": {
+        "name": "Тривалість тривоги",
+        "state": {
+          "1": "1 хвилина",
+          "10": "10 хвилин",
+          "15": "15 хвилин",
+          "2": "2 хвилини",
+          "3": "3 хвилини",
+          "5": "5 хвилин"
+        }
+      },
+      "beep_volume": {
+        "name": "Гучність сигналу",
+        "state": {
+          "loud": "Гучно",
+          "quiet": "Тихо",
+          "very_loud": "Дуже гучно"
+        }
+      },
+      "dimmer_curve": {
+        "name": "Крива димера",
+        "state": {
+          "curve_type_auto": "Авто",
+          "curve_type_linear": "Лінійна",
+          "curve_type_logarithmic": "Логарифмічна"
+        }
+      },
+      "indication_mode": {
+        "name": "Режим підсвітки",
+        "state": {
+          "always": "Завжди увімкнена",
+          "if_on": "Коли активна",
+          "off": "Вимкнена"
+        }
+      },
+      "led_brightness": {
+        "name": "Яскравість LED",
+        "state": {
+          "max": "Висока",
+          "min": "Низька"
+        }
+      },
+      "light_source": {
+        "name": "Тип джерела світла",
+        "state": {
+          "light_source_auto": "Авто",
+          "light_source_leading_edge": "Передній фронт",
+          "light_source_trailing_edge": "Задній фронт"
+        }
+      },
+      "shock_sensitivity": {
+        "name": "Чутливість до ударів",
+        "state": {
+          "high": "Висока",
+          "low": "Низька",
+          "normal": "Нормальна"
+        }
+      },
+      "siren_volume": {
+        "name": "Гучність сирени",
+        "state": {
+          "disabled": "Вимкнено",
+          "loud": "Гучно",
+          "quiet": "Тихо",
+          "very_loud": "Дуже гучно"
+        }
+      },
+      "touch_mode": {
+        "name": "Режим дотику",
+        "state": {
+          "touch_mode_blocked": "Заблоковано",
+          "touch_mode_toggle": "Тільки перемикання",
+          "touch_mode_toggle_and_slider": "Перемикання та слайдер"
+        }
+      }
+    },
+    "sensor": {
+      "active_connection": {
+        "name": "Активне підключення"
+      },
+      "alarm_delay": {
+        "name": "Затримка тривоги"
+      },
+      "alarm_duration": {
+        "name": "Тривалість тривоги",
+        "state": {
+          "10_minutes": "10 хвилин",
+          "15_minutes": "15 хвилин",
+          "1_minute": "1 хвилина",
+          "2_minutes": "2 хвилини",
+          "3_minutes": "3 хвилини",
+          "5_minutes": "5 хвилин",
+          "continuous": "Безперервно"
+        }
+      },
+      "alarm_mode": {
+        "name": "Режим тривоги"
+      },
+      "alarm_type": {
+        "name": "Тип тривоги"
+      },
+      "alarm_volume_level": {
+        "name": "Гучність тривоги",
+        "state": {
+          "disabled": "Вимкнено",
+          "loud": "Гучно",
+          "mute": "Без звуку",
+          "normal": "Нормально",
+          "off": "Вимкнено",
+          "quiet": "Тихо",
+          "very_loud": "Дуже гучно"
+        }
+      },
+      "arm_delay": {
+        "name": "Затримка постановки"
+      },
+      "battery_state": {
+        "name": "Стан батареї"
+      },
+      "beep_volume_level": {
+        "name": "Гучність сигналу",
+        "state": {
+          "loud": "Гучно",
+          "normal": "Нормально",
+          "off": "Вимкнено",
+          "quiet": "Тихо",
+          "very_loud": "Дуже гучно"
+        }
+      },
+      "brightness": {
+        "name": "Яскравість"
+      },
+      "button_brightness": {
+        "name": "Яскравість LED кнопки",
+        "state": {
+          "high": "Висока",
+          "low": "Низька",
+          "off": "Вимкнена"
+        }
+      },
+      "button_mode": {
+        "name": "Режим кнопки",
+        "state": {
+          "interconnect_delay": "Затримка взаємодії",
+          "panic_button": "Тривожна кнопка",
+          "smart_button": "Розумна кнопка"
+        }
+      },
+      "bypassed_devices": {
+        "name": "Обхідні пристрої"
+      },
+      "calibration_state": {
+        "name": "Стан калібрування"
+      },
+      "connection_type": {
+        "name": "Тип підключення"
+      },
+      "contact_mode": {
+        "name": "Режим контакту"
+      },
+      "current": {
+        "name": "Струм"
+      },
+      "current_brightness": {
+        "name": "Поточна яскравість"
+      },
+      "data_channel_quality": {
+        "name": "Якість каналу даних"
+      },
+      "device_color": {
+        "name": "Колір пристрою",
+        "state": {
+          "black": "Чорний",
+          "blue": "Синій",
+          "graphite": "Графіт",
+          "green": "Зелений",
+          "red": "Червоний",
+          "white": "Білий",
+          "yellow": "Жовтий"
+        }
+      },
+      "device_label": {
+        "name": "Мітка пристрою"
+      },
+      "device_marketing_id": {
+        "name": "Маркетинговий ID пристрою"
+      },
+      "device_state": {
+        "name": "Стан пристрою"
+      },
+      "devices_with_malfunctions": {
+        "name": "Пристрої з несправностями"
+      },
+      "energy": {
+        "name": "Енергія"
+      },
+      "false_press_filter": {
+        "name": "Фільтр хибних натискань",
+        "state": {
+          "disabled": "Вимкнено",
+          "double_click": "Подвійне натискання",
+          "long_push": "Довге натискання"
+        }
+      },
+      "firmware_version": {
+        "name": "Версія прошивки"
+      },
+      "gsm_connection_status": {
+        "name": "Стан GSM підключення",
+        "state": {
+          "connected": "Підключено",
+          "connecting": "Підключення",
+          "disconnected": "Відключено",
+          "error": "Помилка"
+        }
+      },
+      "gsm_signal_level": {
+        "name": "Мобільний сигнал (GSM)"
+      },
+      "gsm_type": {
+        "name": "Тип GSM",
+        "state": {
+          "2g": "2G",
+          "3g": "3G",
+          "4g": "4G",
+          "5g": "5G",
+          "unknown": "Невідомо"
+        }
+      },
+      "hardware_version": {
+        "name": "Версія обладнання"
+      },
+      "hub_active_channels": {
+        "name": "Активні канали",
+        "state_attributes": {
+          "channels": {
+            "name": "Список каналів"
+          },
+          "ethernet": {
+            "name": "Ethernet"
+          },
+          "gsm": {
+            "name": "GSM"
+          },
+          "wifi": {
+            "name": "Wi-Fi"
+          }
+        }
+      },
+      "hub_battery": {
+        "name": "Батарея хаба"
+      },
+      "hub_ethernet_ip": {
+        "name": "Внутрішня IP-адреса"
+      },
+      "hub_external_power": {
+        "name": "Зовнішнє живлення хаба",
+        "state": {
+          "connected": "Підключено",
+          "disconnected": "Відключено"
+        }
+      },
+      "hub_geofence": {
+        "name": "GPS розташування",
+        "state_attributes": {
+          "latitude": {
+            "name": "Широта"
+          },
+          "longitude": {
+            "name": "Довгота"
+          },
+          "radius_meters": {
+            "name": "Радіус (метри)"
+          }
+        }
+      },
+      "hub_grade_mode": {
+        "name": "Рівень безпеки"
+      },
+      "hub_gsm": {
+        "name": "Хаб GSM / SIM",
+        "state": {
+          "good": "Добре",
+          "none": "Немає",
+          "normal": "Нормально",
+          "strong": "Сильний",
+          "weak": "Слабкий"
+        },
+        "state_attributes": {
+          "active_sim": {
+            "name": "Активна SIM"
+          },
+          "modem_imei": {
+            "name": "IMEI модему"
+          },
+          "network_status": {
+            "name": "Стан мережі"
+          },
+          "signal_level": {
+            "name": "Рівень сигналу"
+          },
+          "sim1_active": {
+            "name": "SIM 1 активна"
+          },
+          "sim1_apn": {
+            "name": "SIM 1 APN"
+          },
+          "sim1_traffic_rx_kb": {
+            "name": "SIM 1 отримано (КБ)"
+          },
+          "sim1_traffic_tx_kb": {
+            "name": "SIM 1 надіслано (КБ)"
+          },
+          "sim2_active": {
+            "name": "SIM 2 активна"
+          },
+          "sim2_apn": {
+            "name": "SIM 2 APN"
+          },
+          "sim2_traffic_rx_kb": {
+            "name": "SIM 2 отримано (КБ)"
+          },
+          "sim2_traffic_tx_kb": {
+            "name": "SIM 2 надіслано (КБ)"
+          },
+          "total_sims": {
+            "name": "Всього SIM"
+          }
+        }
+      },
+      "hub_hardware_version": {
+        "name": "Версія обладнання",
+        "state_attributes": {
+          "cpu": {
+            "name": "CPU"
+          },
+          "ethernet": {
+            "name": "Ethernet"
+          },
+          "flash": {
+            "name": "Flash"
+          },
+          "modem": {
+            "name": "Модем"
+          },
+          "pcb": {
+            "name": "PCB"
+          },
+          "rfm": {
+            "name": "RFM"
+          },
+          "wifi": {
+            "name": "Wi-Fi"
+          }
+        }
+      },
+      "hub_led_brightness": {
+        "name": "Яскравість LED хаба"
+      },
+      "hub_limits": {
+        "name": "Ліміти хаба",
+        "state_attributes": {
+          "max_cameras": {
+            "name": "Макс. камер"
+          },
+          "max_groups": {
+            "name": "Макс. груп"
+          },
+          "max_rooms": {
+            "name": "Макс. кімнат"
+          },
+          "max_sensors": {
+            "name": "Макс. пристроїв"
+          },
+          "max_users": {
+            "name": "Макс. користувачів"
+          }
+        }
+      },
+      "hub_noise_level": {
+        "name": "Рівень радіозавад",
+        "state": {
+          "high": "Високий",
+          "normal": "Нормальний"
+        },
+        "state_attributes": {
+          "channel_1_dbm": {
+            "name": "Канал 1 (дБм)"
+          },
+          "channel_2_dbm": {
+            "name": "Канал 2 (дБм)"
+          },
+          "data_channel_dbm": {
+            "name": "Канал даних (дБм)"
+          },
+          "high": {
+            "name": "Високі завади"
+          }
+        }
+      },
+      "hub_offline_delay": {
+        "name": "Затримка тривоги офлайн"
+      },
+      "hub_ping_period": {
+        "name": "Період пінгу"
+      },
+      "hub_rooms": {
+        "name": "Кімнати",
+        "state_attributes": {
+          "room_names": {
+            "name": "Список кімнат"
+          },
+          "rooms": {
+            "name": "Деталі кімнат"
+          }
+        }
+      },
+      "hub_timezone": {
+        "name": "Часовий пояс хаба"
+      },
+      "hub_users": {
+        "name": "Користувачі",
+        "state_attributes": {
+          "user_names": {
+            "name": "Імена користувачів"
+          },
+          "users": {
+            "name": "Деталі користувачів"
+          }
+        }
+      },
+      "hub_wifi": {
+        "name": "Хаб Wi-Fi",
+        "state": {
+          "good": "Добре",
+          "none": "Немає",
+          "normal": "Нормально",
+          "strong": "Сильний",
+          "weak": "Слабкий"
+        },
+        "state_attributes": {
+          "channel": {
+            "name": "Канал"
+          },
+          "ip": {
+            "name": "IP-адреса"
+          },
+          "security": {
+            "name": "Безпека"
+          },
+          "signal_level": {
+            "name": "Рівень сигналу"
+          },
+          "ssid": {
+            "name": "Мережа"
+          }
+        }
+      },
+      "image_resolution": {
+        "name": "Роздільна здатність зображення"
+      },
+      "indicator_light_mode": {
+        "name": "Режим LED"
+      },
+      "ip_address": {
+        "name": "IP-адреса"
+      },
+      "last_action": {
+        "name": "Остання дія",
+        "state": {
+          "double_press": "Подвійне натискання",
+          "emergency": "Екстрена ситуація",
+          "long_press": "Довге натискання",
+          "panic": "Паніка",
+          "single_press": "Одиночне натискання"
+        }
+      },
+      "last_alert": {
+        "name": "Остання тривога",
+        "state_attributes": {
+          "device_name": {
+            "name": "Пристрій"
+          },
+          "event_type": {
+            "name": "Тип події"
+          },
+          "notification_type": {
+            "name": "Тип сповіщення"
+          },
+          "room_name": {
+            "name": "Кімната"
+          }
+        }
+      },
+      "last_ring": {
+        "name": "Останній дзвінок"
+      },
+      "led_indication": {
+        "name": "LED індикація"
+      },
+      "mac_address": {
+        "name": "MAC-адреса"
+      },
+      "malfunctions": {
+        "name": "Несправності"
+      },
+      "mcp_switch_state": {
+        "name": "Стан кнопки",
+        "state": {
+          "button_pressed": "Натиснута",
+          "button_unpressed": "Нормальний"
+        }
+      },
+      "network_status": {
+        "name": "Мобільна мережа"
+      },
+      "noise_level_avg": {
+        "name": "Середній рівень шуму",
+        "state_attributes": {
+          "always_active": {
+            "name": "Завжди активний"
+          },
+          "armed_in_night_mode": {
+            "name": "Під охороною в нічному режимі"
+          },
+          "channel1": {
+            "name": "Канал 1"
+          },
+          "channel2": {
+            "name": "Канал 2"
+          },
+          "high": {
+            "name": "Високий шум"
+          }
+        }
+      },
+      "nvr_cameras": {
+        "name": "Камери"
+      },
+      "online_devices": {
+        "name": "Онлайн пристрої"
+      },
+      "photos_per_alarm": {
+        "name": "Фото на тривогу"
+      },
+      "power": {
+        "name": "Потужність"
+      },
+      "power_supply_mode": {
+        "name": "Режим живлення"
+      },
+      "recent_events": {
+        "name": "Останні події",
+        "state": {
+          "no_event": "Немає подій"
+        },
+        "state_attributes": {
+          "event_count": {
+            "name": "Кількість подій"
+          },
+          "events": {
+            "name": "Останні події"
+          },
+          "events_raw": {
+            "name": "Необроблені дані"
+          }
+        }
+      },
+      "room": {
+        "name": "Кімната"
+      },
+      "sensitivity": {
+        "name": "Чутливість",
+        "state": {
+          "high": "Висока",
+          "low": "Низька",
+          "normal": "Нормальна"
+        }
+      },
+      "signal_strength": {
+        "name": "Рівень сигналу"
+      },
+      "sim_status": {
+        "name": "Стан SIM-карт",
+        "state_attributes": {
+          "sim_cards": {
+            "name": "Деталі SIM-карт"
+          },
+          "sim_slots_total": {
+            "name": "Всього слотів SIM"
+          },
+          "sim_slots_used": {
+            "name": "Використано слотів SIM"
+          }
+        }
+      },
+      "smart_lock_last_changed_by": {
+        "name": "Востаннє змінено"
+      },
+      "total_devices": {
+        "name": "Всього пристроїв"
+      },
+      "unread_notifications": {
+        "name": "Непрочитані сповіщення"
+      },
+      "video_edge_archive_depth": {
+        "name": "Тривалість архіву"
+      },
+      "video_edge_connection": {
+        "name": "Підключення",
+        "state": {
+          "offline": "Офлайн",
+          "online": "Онлайн",
+          "unknown": "Невідомо"
+        }
+      },
+      "video_edge_cpu_usage": {
+        "name": "Завантаження CPU"
+      },
+      "video_edge_led_brightness": {
+        "name": "Яскравість LED"
+      },
+      "video_edge_max_preview_duration": {
+        "name": "Макс. тривалість попереднього перегляду"
+      },
+      "video_edge_ram_usage": {
+        "name": "Використання RAM"
+      },
+      "video_edge_record_mode": {
+        "name": "Локальний запис",
+        "state": {
+          "disabled": "Вимкнено",
+          "on_detection": "При виявленні",
+          "permanent": "Постійний",
+          "unknown": "Невідомо"
+        }
+      },
+      "video_edge_record_policy": {
+        "name": "Запис NVR",
+        "state": {
+          "always": "Завжди",
+          "unknown": "Невідомо",
+          "when_requested": "За запитом"
+        }
+      },
+      "video_edge_storage_status": {
+        "name": "Стан сховища",
+        "state": {
+          "formatting": "Форматування",
+          "idle": "Очікування",
+          "need_format": "Потрібне форматування",
+          "none": "Немає",
+          "ready": "Готове",
+          "unknown": "Невідомо"
+        }
+      },
+      "video_edge_storage_temperature": {
+        "name": "Температура сховища"
+      },
+      "video_edge_storage_total": {
+        "name": "Загальний обсяг сховища"
+      },
+      "video_edge_uptime": {
+        "name": "Час роботи"
+      },
+      "video_edge_wifi_signal": {
+        "name": "Wi-Fi сигнал камери"
+      },
+      "voltage": {
+        "name": "Напруга"
+      },
+      "waterstop_external_power": {
+        "name": "Джерело живлення",
+        "state": {
+          "no_supply": "Немає зовнішнього живлення",
+          "supply": "Зовнішнє живлення"
+        }
+      },
+      "waterstop_motor_state": {
+        "name": "Стан мотора",
+        "state": {
+          "off": "Зупинено",
+          "rotate_to_closing": "Закривається",
+          "rotate_to_open": "Відкривається"
+        }
+      },
+      "waterstop_prevention_period": {
+        "name": "Період профілактики"
+      },
+      "waterstop_prevention_status": {
+        "name": "Профілактика",
+        "state": {
+          "disabled": "Вимкнено",
+          "enabled": "Увімкнено"
+        }
+      },
+      "wifi_signal_level": {
+        "name": "Сигнал Wi-Fi"
+      }
+    },
+    "switch": {
+      "accelerometer": {
+        "name": "Акселерометр",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "alert_if_moved": {
+        "name": "Тривога при переміщенні",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "alerts_by_sirens": {
+        "name": "Тривоги через сирени",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "always_active": {
+        "name": "Завжди активний",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "beep_on_arm": {
+        "name": "Сигнал при постановці/знятті",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "beep_on_arm_disarm": {
+        "name": "Сигнал при постановці/знятті",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "beep_on_delay": {
+        "name": "Сигнал при затримці входу/виходу",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "blink_while_armed": {
+        "name": "Блимання під охороною",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "child_lock": {
+        "name": "Захист від дітей",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "chimes": {
+        "name": "Дзвінок",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "chimes_enabled": {
+        "name": "Дзвінок",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "co_alarm_enabled": {
+        "name": "Тривога CO",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "current_protection": {
+        "name": "Захист від струму",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "current_threshold": {
+        "name": "Захист порогу струму",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "dimmer_calibration": {
+        "name": "Калібрування димера",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "external_contact_enabled": {
+        "name": "Зовнішній контакт",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "ignore_impact": {
+        "name": "Ігнорувати простий удар",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "indication_enabled": {
+        "name": "LED індикація",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "indicator_light": {
+        "name": "Індикаторне світло",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "led_indicator": {
+        "name": "LED індикатор",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "night_mode": {
+        "name": "Активний в нічному режимі",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "security_group": {
+        "name": "Група безпеки",
+        "state_attributes": {
+          "bulk_arm_involved": {
+            "name": "Задіяний у масовій постановці"
+          },
+          "bulk_disarm_involved": {
+            "name": "Задіяний у масовому знятті"
+          },
+          "device_count": {
+            "name": "Кількість пристроїв"
+          },
+          "group_id": {
+            "name": "ID групи"
+          },
+          "group_name": {
+            "name": "Назва групи"
+          },
+          "space_id": {
+            "name": "ID простору"
+          },
+          "space_name": {
+            "name": "Назва простору"
+          }
+        }
+      },
+      "shock_sensor": {
+        "name": "Датчик удару",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_on_leak": {
+        "name": "Сирена при витоку",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_acceleration": {
+        "name": "Сирена при прискоренні",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_co": {
+        "name": "Сирена при CO",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_contact": {
+        "name": "Сирена при контакті",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_glass": {
+        "name": "Сирена при розбитті скла",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_motion": {
+        "name": "Сирена при русі",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_reed": {
+        "name": "Сирена при відкритті дверей",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_shock": {
+        "name": "Сирена при ударі",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_smoke": {
+        "name": "Сирена при задимленні",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_temp_diff": {
+        "name": "Сирена при швидкому підвищенні температури",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_temperature": {
+        "name": "Сирена при високій температурі",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "siren_trigger_tilt": {
+        "name": "Сирена при нахилі",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "socket": {
+        "name": "Розетка",
+        "state_attributes": {
+          "channel_id": {
+            "name": "ID каналу"
+          },
+          "operating_mode": {
+            "name": "Режим роботи"
+          },
+          "output_mode": {
+            "name": "Режим виходу"
+          }
+        }
+      },
+      "state_memory": {
+        "name": "Пам'ять стану",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "temp_alarm_enabled": {
+        "name": "Тривога високої температури",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "temp_diff_alarm_enabled": {
+        "name": "Тривога швидкого підвищення температури",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "tilt_sensor": {
+        "name": "Датчик нахилу",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      },
+      "voltage_protection": {
+        "name": "Захист від напруги",
+        "state": {
+          "off": "Вимкнено",
+          "on": "Увімкнено"
+        }
+      }
+    },
+    "update": {
+      "hub_firmware": {
+        "name": "Прошивка"
+      },
+      "video_edge_firmware": {
+        "name": "Прошивка"
+      }
+    },
+    "valve": {
+      "waterstop_valve": {
+        "name": "Водяний клапан"
+      }
+    }
+  },
+  "exceptions": {
+    "arm_disarm_failed": {
+      "message": "Не вдалося змінити стан тривоги: {error}"
+    },
+    "device_not_found": {
+      "message": "Пристрій не знайдено."
+    },
+    "failed_to_change": {
+      "message": "Не вдалося змінити {entity}: {error}"
+    },
+    "force_arm_failed": {
+      "message": "Не вдалося примусово поставити на охорону хаб {hub_id}: {error}"
+    },
+    "force_arm_night_failed": {
+      "message": "Не вдалося примусово увімкнути нічний режим для хабу {hub_id}: {error}"
+    },
+    "hub_not_found": {
+      "message": "Хаб не знайдено."
+    },
+    "invalid_target": {
+      "message": "Невірна ціль для сервісу."
+    },
+    "no_api_key": {
+      "message": "Для цієї сутності не налаштовано API-ключ."
+    },
+    "no_hubs_found": {
+      "message": "Хабів не знайдено."
+    },
+    "panic_cooldown": {
+      "message": "Кнопку паніки відхилено: зачекайте {seconds} секунд між натисканнями, щоб уникнути повторних тривог."
+    },
+    "panic_failed": {
+      "message": "Не вдалося активувати тривожну кнопку: {error}"
+    },
+    "space_not_found": {
+      "message": "Простір не знайдено."
+    },
+    "system_armed": {
+      "message": "Система під охороною. Будь ласка, зніміть."
+    }
+  },
+  "issues": {
+    "onvif_init_failed": {
+      "description": "Ajax не зміг запустити ONVIF — локальні детекції ШІ (рух, людина, транспорт, тварина, дзвінок дверей) вимкнено, і інтеграція повертається до REST-опитування в хмарі.\n\nПомилка: {error}\n\nПеревірте облікові дані RTSP/ONVIF у кроці «Налаштувати» інтеграції та що камери доступні в мережі.",
+      "title": "Локальне виявлення ШІ через ONVIF недоступне"
+    },
+    "onvif_no_cameras": {
+      "description": "ONVIF запустився, але жодна камера не прийняла облікові дані. Локальні детекції ШІ (людина, транспорт, тварина, дзвінок дверей) не спрацьовуватимуть — хмарний REST API є єдиним джерелом.\n\nПеревірте ім’я користувача та пароль RTSP/ONVIF у кроці «Налаштувати», і що мережеві порти камер (80, 554) доступні з Home Assistant.",
+      "title": "ONVIF: жодної камери не підключено"
+    },
+    "onvif_partial_cameras": {
+      "description": "ONVIF прийняв облікові дані, але лише {connected} з {total} камер змогли підключитися. Інші камери не вироблятимуть локальних детекцій ШІ; для них хмарний REST API є єдиним джерелом.\n\nПеревірте мережу та підтримку ONVIF на недосяжних камерах.",
+      "title": "ONVIF: підключено лише {connected}/{total} камер"
+    },
+    "sqs_init_failed": {
+      "description": "Ajax не зміг підключитися до AWS SQS — сповіщення про події в реальному часі вимкнено, і інтеграція повертається до опитування REST API (повільніше).\n\nПомилка: {error}\n\nПеревірте AWS Access Key, Secret Key і Queue Name у кроці «Налаштувати» інтеграції.",
+      "title": "Події AWS SQS у реальному часі недоступні"
+    },
+    "sse_init_failed": {
+      "description": "Ajax не зміг підключитися до SSE-кінцевої точки — сповіщення про події в реальному часі вимкнено, і інтеграція повертається до опитування REST API (повільніше).\n\nПомилка: {error}\n\nПеревірте, що URL проксі доступний і що токен сесії дійсний (використайте «Переналаштувати» для оновлення).",
+      "title": "Події SSE у реальному часі недоступні"
+    },
+    "verify_ssl_disabled": {
+      "description": "Інтеграція Ajax підключається до проксі без перевірки SSL-сертифіката. Токени сеансу та облікові дані передаються каналом, який неможливо автентифікувати, що робить їх вразливими до атак «людина посередині». Знову увімкніть «Перевіряти SSL-сертифікат» у кроці переналаштування інтеграції, щойно ваш проксі матиме дійсний сертифікат.",
+      "title": "Перевірку SSL вимкнено"
+    }
+  },
+  "options": {
+    "error": {
+      "invalid_proxy_url": "Невірна URL-адреса проксі. URL має починатися з http:// або https://",
+      "no_spaces_selected": "Будь ласка, виберіть принаймні один простір для активації."
+    },
+    "step": {
+      "aws_credentials": {
+        "data": {
+          "aws_access_key_id": "Ідентифікатор ключа доступу AWS",
+          "aws_secret_access_key": "Секретний ключ AWS",
+          "queue_name": "Назва черги SQS"
+        },
+        "data_description": {
+          "aws_access_key_id": "Приклад: AKIA3SFSAKBHLDDOCGFG",
+          "aws_secret_access_key": "Секретний ключ від Ajax (40 символів)",
+          "queue_name": "Приклад: ajax-events-V6WHbk3e-prod.fifo"
+        },
+        "description": "Налаштуйте облікові дані AWS для сповіщень про події в реальному часі.\n\n**Поточна конфігурація:**\n- Access Key: {current_access_key}\n- Secret Key: {current_secret_key}\n- Черга SQS: {current_queue}\n\nЗалиште поле порожнім, щоб зберегти поточне значення.",
+        "title": "Облікові дані AWS SQS"
+      },
+      "enabled_spaces": {
+        "data": {
+          "enabled_spaces": "Увімкнені простори"
+        },
+        "data_description": {
+          "enabled_spaces": "Завантажуються лише вибрані простори; їхні пристрої створюють сутності в Home Assistant."
+        },
+        "description": "Виберіть, які простори увімкнути в Home Assistant.\n\nВимкнені простори не створюватимуть пристрої чи сутності. Зміна цього перезавантажить інтеграцію.",
+        "title": "Увімкнені простори"
+      },
+      "init": {
+        "description": "Виберіть категорію для налаштування",
+        "menu_options": {
+          "aws_credentials": "Облікові дані AWS SQS",
+          "enabled_spaces": "Увімкнені простори",
+          "notifications": "Сповіщення",
+          "polling_settings": "Налаштування опитування",
+          "proxy_settings": "Налаштування проксі",
+          "rtsp_credentials": "Облікові дані RTSP/ONVIF"
+        },
+        "title": "Параметри Ajax"
+      },
+      "notifications": {
+        "data": {
+          "monitored_spaces": "Простори для моніторингу",
+          "notification_filter": "Фільтр сповіщень",
+          "persistent_notification": "Показувати постійні сповіщення"
+        },
+        "data_description": {
+          "monitored_spaces": "Простори, для яких створюються сповіщення. Залиште всі вибраними (або порожнім), щоб отримувати сповіщення для всіх просторів.",
+          "notification_filter": "Категорії подій, які створюють постійне сповіщення.",
+          "persistent_notification": "Показує події як постійні сповіщення на панелі Home Assistant."
+        },
+        "description": "Налаштуйте сповіщення вашої інтеграції Ajax",
+        "title": "Параметри сповіщень"
+      },
+      "polling_settings": {
+        "data": {
+          "door_sensor_fast_poll": "Швидке опитування дверних датчиків"
+        },
+        "data_description": {
+          "door_sensor_fast_poll": "Опитувати дверні датчики кожні 5 секунд, коли знято з охорони. Вимкніть для зменшення API-запитів."
+        },
+        "description": "Налаштуйте поведінку опитування API для оптимізації продуктивності.\n\n**Поточна поведінка:**\n- Легке опитування (стан хаба + пристрої): кожні 30-60с\n- Повне оновлення метаданих (кімнати, користувачі, групи): щогодини",
+        "title": "Налаштування опитування"
+      },
+      "proxy_settings": {
+        "data": {
+          "proxy_url": "URL-адреса проксі",
+          "verify_ssl": "Перевірка SSL-сертифіката"
+        },
+        "data_description": {
+          "proxy_url": "Повна URL-адреса вашого проксі-сервера Ajax",
+          "verify_ssl": "Вимкніть для самопідписаних сертифікатів"
+        },
+        "description": "Змініть URL-адресу вашого проксі-сервера Ajax та налаштування SSL.",
+        "title": "Налаштування проксі"
+      },
+      "rtsp_credentials": {
+        "data": {
+          "rtsp_password": "Пароль ONVIF",
+          "rtsp_username": "Ім'я користувача ONVIF"
+        },
+        "data_description": {
+          "rtsp_password": "Пароль, пов'язаний з користувачем ONVIF",
+          "rtsp_username": "Ім'я користувача, створене в додатку Ajax для ONVIF"
+        },
+        "description": "Налаштуйте облікові дані ONVIF/RTSP для доступу до потоків камер Video Edge.\n\n**Поточна конфігурація:**\n- Ім'я користувача: {current_username}\n- Пароль: {current_password}\n\n⚠️ Ці облікові дані мають бути створені в додатку Ajax (Камера → Налаштування → ONVIF).",
+        "title": "Облікові дані RTSP/ONVIF"
+      }
+    }
+  },
+  "selector": {
+    "auth_mode": {
+      "options": {
+        "direct": "Пряме (тільки корпоративний API-ключ)",
+        "proxy_secure": "Проксі Ajax"
+      }
+    },
+    "dhcp_action": {
+      "options": {
+        "new": "Створити нову конфігурацію"
+      }
+    },
+    "notification_filter": {
+      "options": {
+        "alarms_only": "Тільки тривоги",
+        "all": "Всі сповіщення",
+        "none": "Немає",
+        "security_events": "Події безпеки (тривоги + постановка)"
+      }
+    }
+  },
+  "services": {
+    "force_arm": {
+      "description": "Примусова постановка на охорону, ігноруючи відкриті датчики та проблеми.",
+      "name": "Примусова постановка"
+    },
+    "force_arm_night": {
+      "description": "Примусова активація нічного режиму, ігноруючи відкриті датчики та проблеми.",
+      "name": "Примусовий нічний режим"
+    },
+    "get_nvr_recordings": {
+      "description": "Отримати дані записів NVR з API (за останні 24 години). Зберігає відповідь у ajax_nvr_recordings.json для діагностики.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Запис інтеграції Ajax для запиту.",
+          "name": "Запис інтеграції"
+        }
+      },
+      "name": "Отримати записи NVR"
+    },
+    "get_raw_devices": {
+      "description": "Отримати необроблені JSON-дані API для всіх пристроїв. Зберігає повну відповідь API у ajax_raw_devices.json.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Запис інтеграції Ajax для запиту.",
+          "name": "Запис інтеграції"
+        }
+      },
+      "name": "Отримати необроблені дані"
+    },
+    "get_smart_locks": {
+      "description": "Отримує дані смарт-замків з API та замків, виявлених через SSE/SQS. Зберігає відповідь у ajax_smart_locks.json для діагностики.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Запис інтеграції Ajax для запиту.",
+          "name": "Запис інтеграції"
+        }
+      },
+      "name": "Отримати смарт-замки"
+    },
+    "refresh_metadata": {
+      "description": "Примусове повне оновлення кімнат, користувачів та груп з Ajax.",
+      "fields": {
+        "config_entry_id": {
+          "description": "Запис інтеграції Ajax для оновлення.",
+          "name": "Запис інтеграції"
+        }
+      },
+      "name": "Оновити метадані"
+    }
+  }
+}
