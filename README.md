@@ -455,3 +455,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This integration is **not officially affiliated** with Ajax Systems. It is a community project developed with support from Ajax Systems.
 
 Use at your own risk. The developer is not responsible for any issues arising from the use of this integration.
+
+## Hardened Direct-Mode Build
+
+This fork is intentionally direct-only for Enterprise API use. The integration does not ship proxy, SSE relay, or AWS SQS transport code. Ajax cloud requests are sent only to the official `https://api.ajax.systems/api` endpoint, TLS verification is mandatory, redirects are disabled, and the HTTP client ignores proxy environment variables. Local ONVIF/RTSP camera traffic remains limited to private/link-local camera addresses.

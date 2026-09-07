@@ -113,8 +113,7 @@ TO_REDACT = {
     "email",
     "password",
     "totp_secret",
-    # Legacy settings are still redacted in case an older config entry is
-    # inspected before the user reconfigures it.
+    # Redact legacy keys as defense-in-depth for upgrades from older versions.
     "proxy_url",
     "aws_access_key_id",
     "aws_secret_access_key",
@@ -129,8 +128,6 @@ TO_REDACT = {
     "session_token",
     "userId",
     "user_id",
-    "sse_url",
-    "sseUrl",
     "serial_number",
     "serialNumber",
     "hub_id",

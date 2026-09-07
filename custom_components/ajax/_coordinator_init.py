@@ -8,19 +8,17 @@ Cloud event transports are intentionally absent from this hardened build.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-
-from .const import DOMAIN
 from .models import AjaxAccount
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
-    
+
     from .api import AjaxRestApi
+
 _LOGGER = logging.getLogger(__name__)
 
 

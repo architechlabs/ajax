@@ -8,7 +8,6 @@ creation live here, which the auth tests patch).
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
 import json
 import logging
@@ -21,7 +20,6 @@ import aiohttp
 from ..const import (
     AJAX_REST_API_BASE_URL,
     AJAX_REST_API_TIMEOUT,
-    AUTH_MODE_DIRECT,
 )
 
 _LOGGER = logging.getLogger("custom_components.ajax.api")
@@ -86,7 +84,7 @@ class AjaxRestClientBase:
         """Initialize the API client.
 
         Args:
-            api_key: API Key provided by Ajax Systems (can be empty for proxy modes)
+            api_key: Enterprise API key provided by Ajax Systems
             email: User email address
             password: User password (plain or SHA256 hashed)
             password_is_hashed: True if password is already SHA256 hashed
@@ -127,9 +125,9 @@ class AjaxRestClientBase:
         self._token_version: int = 0
         # Timestamp when session token was obtained (for proactive refresh)
         self._token_obtained_at: float = 0.0
-        # Adaptive TTL: reduced when proxy invalidates tokens early
+        # Adaptive TTL: reduced when the API expires tokens earlier than expected.
         self._effective_ttl: float = SESSION_TOKEN_TTL
-        # Track consecutive refresh failures to skip refresh in proxy mode
+        # Track consecutive refresh failures before falling back to login.
         self._refresh_failures: int = 0
 
         # Short-lived in-memory cache of GET /spaces/{id} responses.
@@ -150,20 +148,17 @@ class AjaxRestClientBase:
         # Short-lived cache of the GET /user/{id}/hubs list. At setup the
         # connection test and the coordinator's first refresh both fetch it
         # back-to-back; without coalescing the first boot pays for the round
-        # trip twice. A short TTL also folds in any rapid consecutive ticks
-        # (e.g. an legacy real-time-triggered refresh landing right after the periodic
-        # one) with no staleness risk — hub membership changes slowly.
+        # trip twice. A short TTL also folds in rapid consecutive ticks with no
+        # staleness risk because hub membership changes slowly.
         self._hubs_cache: tuple[float, list[dict[str, Any]]] | None = None
         self._hubs_cache_ttl: float = 5.0
 
-        # Base headers with API key (may be empty for proxy modes initially)
+        # Base headers always contain the Enterprise API key.
         self._base_headers = {
             "Content-Type": "application/json",
         }
         if api_key:
             self._base_headers["X-Api-Key"] = api_key
-
-
 
     def _get_base_url(self, for_login: bool = False) -> str:
         """Return the fixed official Ajax API base URL."""
@@ -202,12 +197,8 @@ class AjaxRestClientBase:
     def _cache_entry_usable(self, written_at: float, ttl: float) -> bool:
         """True if a cache entry may be served instead of re-fetching.
 
-        Within TTL always; additionally, while a bypass window is open, only
-        if the entry was written AFTER the window opened — a fetch done
-        inside the window is already fresh, so serving it to a second
-        same-tick caller preserves the coalescing the caches exist for,
-        while an entry written before the window opened is exactly the
-        stale state the bypass is meant to skip.
+        Within TTL always. The direct API has no intermediary cache-bypass
+        header, so this helper simply applies the local cache TTL.
         """
         if (time.time() - written_at) >= ttl:
             return False

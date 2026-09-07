@@ -71,7 +71,6 @@ def _build_api(
     )
 
 
-
 class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Ajax Security Systems."""
 

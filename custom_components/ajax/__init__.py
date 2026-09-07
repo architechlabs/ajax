@@ -13,7 +13,6 @@ from homeassistant.helpers import (
     config_validation as cv,
     device_registry as dr,
     entity_registry as er,
-    issue_registry as ir,
 )
 
 from ._device_parents import async_register_parent_devices
@@ -196,7 +195,7 @@ async def _async_update_options(hass: HomeAssistant, entry: AjaxConfigEntry) -> 
     """Handle config entry updates: reload if needed, else live-apply."""
     coordinator = entry.runtime_data
 
-    # Connection-relevant change (credentials, proxy, spaces, RTSP…) →
+    # Connection-relevant change (credentials, spaces, RTSP…) →
     # schedule a reload; the fresh setup re-reads everything and takes a
     # new snapshot. Scheduling (vs awaiting) keeps this listener-safe.
     if _reload_relevant_config(entry) != coordinator._reload_config_snapshot:

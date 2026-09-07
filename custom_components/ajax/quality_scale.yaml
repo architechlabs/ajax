@@ -208,7 +208,7 @@ rules:
       snapshot URL on events, energy panel.
   docs-troubleshooting:
     status: done
-    comment: README "Troubleshooting" covers reauth, proxy, ONVIF, SQS.
+    comment: README "Troubleshooting" covers reauthentication and ONVIF/local camera setup.
   docs-use-cases:
     status: done
     comment: See `docs-examples` — same section in the README.
@@ -237,11 +237,8 @@ rules:
   repair-issues:
     status: done
     comment: |
-      Five persistent repair issues cover the soft-fail paths:
-      `verify_ssl_disabled` (SSL off), `onvif_init_failed`,
-      `onvif_no_cameras`, `onvif_partial_cameras`, `sse_init_failed`,
-      `sqs_init_failed`. Each issue is auto-deleted when the underlying
-      problem resolves.
+      Persistent repair issues cover the ONVIF soft-fail paths; retired
+      proxy/SSE/SQS transports do not have runtime repair paths.
   stale-devices:
     status: done
     comment: |
@@ -257,9 +254,9 @@ rules:
   inject-websession:
     status: done
     comment: |
-      `__init__.async_setup_entry` passes `async_get_clientsession(hass)` to
-      `AjaxRestApi` when `verify_ssl=True`; a dedicated session is used when
-      SSL verification is disabled (HA's shared session cannot disable it).
+      `AjaxRestApi` owns a dedicated TLS-validating session with
+      `trust_env=False`, so environment HTTP proxy settings cannot silently
+      reroute Enterprise API credentials.
   strict-typing:
     status: done
     comment: |

@@ -16,24 +16,15 @@ fields of its own.
 from __future__ import annotations
 
 import logging
-import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-from homeassistant.components.persistent_notification import async_create
-
 from .const import (
-    CONF_MONITORED_SPACES,
-    CONF_NOTIFICATION_FILTER,
-    CONF_PERSISTENT_NOTIFICATION,
     EVENT_AJAX_ARMED,
     EVENT_AJAX_ARMED_HOME,
     EVENT_AJAX_ARMED_NIGHT,
     EVENT_AJAX_DISARMED,
     EVENT_AJAX_SECURITY_STATE_CHANGED,
-    NOTIFICATION_FILTER_ALARMS_ONLY,
-    NOTIFICATION_FILTER_ALL,
-    NOTIFICATION_FILTER_NONE,
 )
 from .event_codes import get_event_message, resolve_event_language
 from .models import GroupState, SecurityState

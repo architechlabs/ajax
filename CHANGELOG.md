@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Hardened Direct Mode
+
+### Security
+
+* Direct Enterprise API mode only; proxy, SSE relay and AWS SQS transports are removed from the shipped integration.
+* Ajax cloud requests are fixed to the official `https://api.ajax.systems/api` host with TLS verification, redirects disabled, and environment proxy settings disabled.
+* Diagnostics and local inventories redact credentials, tokens and network identifiers.
+
+
 All notable changes to this project will be documented in this file.
 
 ## [0.37.4] - 2026-08-31

@@ -1,6 +1,6 @@
 {
   "domain": "ajax",
-  "name": "Ajax Security System (Direct API Hardened)",
+  "name": "Ajax Security System",
   "codeowners": [
     "@foXaCe"
   ],

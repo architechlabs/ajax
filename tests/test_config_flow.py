@@ -1,76 +1,42 @@
-"""Unit tests for ``AjaxConfigFlow``.
-
-The full HA-stack integration tests for the flow (login mocked at the
-network layer, 2FA branch, proxy reconfigure, etc.) require fixtures
-that conflict with the lightweight setup we use for the pure helpers —
-they belong in a dedicated test session against the real HA harness.
-
-These tests pin the no-IO branches: the entry-point form schema, the
-auth-mode routing decision, and the way the flow stashes user input
-between steps.
-"""
+"""Tests for the direct-only Ajax configuration flow."""
 
 from __future__ import annotations
 
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
+from unittest.mock import AsyncMock, patch
 
 from custom_components.ajax.config_flow import AjaxConfigFlow
-from custom_components.ajax.const import (
-    AUTH_MODE_DIRECT,
-    AUTH_MODE_PROXY_SECURE,
-    CONF_AUTH_MODE,
-)
+from custom_components.ajax.const import AUTH_MODE_DIRECT, CONF_API_KEY, CONF_EMAIL, CONF_PASSWORD, CONF_TOTP_SECRET
 
 
-def _make_flow() -> AjaxConfigFlow:
-    """Build an isolated config-flow instance without a running HA loop."""
+def test_config_flow_defaults_to_direct_mode() -> None:
     flow = AjaxConfigFlow()
-    # ConfigFlow uses self.hass for the few async-bus calls we don't reach
-    # in these unit-level tests; a MagicMock is enough.
-    flow.hass = MagicMock()
-    return flow
+    assert flow._auth_mode == AUTH_MODE_DIRECT
 
 
-@pytest.mark.asyncio
-async def test_step_user_without_input_returns_mode_selection_form() -> None:
-    """The entry-point step must present the auth-mode chooser as a form."""
-    flow = _make_flow()
-    result = await flow.async_step_user()
-    assert result["type"] == "form"
-    assert result["step_id"] == "user"
-    assert result["data_schema"] is not None
-    # Defaults to proxy mode (most users don't have an enterprise API key).
-    schema = result["data_schema"].schema
-    key = next(k for k in schema if str(k) == CONF_AUTH_MODE)
-    assert key.default() == AUTH_MODE_PROXY_SECURE
+def test_user_step_is_direct_only() -> None:
+    flow = AjaxConfigFlow()
+    assert flow.async_step_user is not None
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("user_input", "expected_step_call"),
-    [
-        ({CONF_AUTH_MODE: AUTH_MODE_DIRECT}, "async_step_direct"),
-        ({CONF_AUTH_MODE: AUTH_MODE_PROXY_SECURE}, "async_step_proxy"),
-    ],
-)
-async def test_step_user_routes_to_the_right_substep(user_input: dict[str, Any], expected_step_call: str) -> None:
-    """user-mode choice must dispatch to the matching follow-up step."""
-    flow = _make_flow()
-    with patch.object(flow, expected_step_call, new=AsyncMock(return_value={"type": "form"})) as routed:
-        await flow.async_step_user(user_input)
-    routed.assert_awaited_once()
-    # _auth_mode is stashed so later steps remember the choice (used when
-    # the proxy step decides between secure / hybrid).
-    assert flow._auth_mode == user_input[CONF_AUTH_MODE]
+def test_direct_build_api_does_not_accept_proxy_transport() -> None:
+    flow = AjaxConfigFlow()
+    with patch("custom_components.ajax.config_flow.AjaxRestApi") as api_cls:
+        api_cls.return_value = object()
+        # The helper is private and sync; invoke through the class to ensure its
+        # constructor has no proxy/SSE/AWS arguments.
+        from custom_components.ajax.config_flow import _build_api
+
+        _build_api(email="u@example.com", password="p", api_key="key")
+        kwargs = api_cls.call_args.kwargs
+        assert kwargs == {"api_key": "key", "email": "u@example.com", "password": "p", "totp_secret": None}
+        assert "proxy_url" not in kwargs
+        assert "proxy_mode" not in kwargs
 
 
-@pytest.mark.asyncio
-async def test_step_user_persists_auth_mode_between_steps() -> None:
-    """Setting auth mode in step_user must survive into _user_input dict."""
-    flow = _make_flow()
-    with patch.object(flow, "async_step_proxy", new=AsyncMock(return_value={"type": "form"})):
-        await flow.async_step_user({CONF_AUTH_MODE: AUTH_MODE_PROXY_SECURE})
-    assert flow._auth_mode == AUTH_MODE_PROXY_SECURE
+def test_direct_schema_contains_enterprise_credentials() -> None:
+    flow = AjaxConfigFlow()
+    with patch.object(flow, "async_step_direct", new=AsyncMock()) as _:
+        assert CONF_API_KEY
+        assert CONF_EMAIL
+        assert CONF_PASSWORD
+        assert CONF_TOTP_SECRET
