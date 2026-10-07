@@ -132,6 +132,34 @@ async def test_get_camera_stream_url_missing_returns_empty() -> None:
     assert await api.async_get_camera_stream_url("h1", "cam1") == ""
 
 
+async def test_get_hub_logs_routes() -> None:
+    api = _api()
+    api._request.return_value = [{"eventId": "e1"}]
+    assert await api.async_get_hub_logs("h1") == [{"eventId": "e1"}]
+    api._request.assert_awaited_once_with("GET", "user/USER123/hubs/h1/logs?page=1")
+
+
+async def test_get_hub_logs_clamps_page() -> None:
+    api = _api()
+    api._request.return_value = []
+    assert await api.async_get_hub_logs("h1", page=99) == []
+    api._request.assert_awaited_once_with("GET", "user/USER123/hubs/h1/logs?page=50")
+
+
+async def test_get_hub_logs_no_user_id_raises() -> None:
+    api = _api(user_id=None)
+    with pytest.raises(AjaxRestApiError):
+        await api.async_get_hub_logs("h1")
+    api._request.assert_not_awaited()
+
+
+async def test_get_hub_logs_non_list_returns_empty() -> None:
+    api = _api()
+    api._request.return_value = {"logs": []}
+    assert await api.async_get_hub_logs("h1", page=True) == []
+    api._request.assert_awaited_once_with("GET", "user/USER123/hubs/h1/logs?page=1")
+
+
 # ---------------------------------------------------------------------------
 # _devices.py
 # ---------------------------------------------------------------------------

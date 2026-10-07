@@ -16,6 +16,7 @@ from .const import (
     EVENT_AJAX_CAMERA_DETECTION,
     EVENT_AJAX_DISARMED,
     EVENT_AJAX_DOORBELL_RING,
+    EVENT_AJAX_MOTIONCAM_PHOTO,
     EVENT_AJAX_SCENARIO_TRIGGERED,
     EVENT_AJAX_SECURITY_STATE_CHANGED,
     EVENT_AJAX_SMART_LOCK_DOORBELL,
@@ -115,6 +116,15 @@ _MESSAGES: dict[str, dict[str, str]] = {
         "nl": "door {source}",
         "sv": "av {source}",
         "uk": "від {source}",
+    },
+    "photo_received": {
+        "en": "Photo received",
+        "fr": "Photo reçue",
+        "es": "Foto recibida",
+        "de": "Foto empfangen",
+        "nl": "Foto ontvangen",
+        "sv": "Foto mottagen",
+        "uk": "Фото отримано",
     },
 }
 
@@ -299,6 +309,15 @@ def async_describe_events(
             LOGBOOK_ENTRY_ICON: "mdi:cctv",
         }
 
+    @callback
+    def async_describe_motioncam_photo(event: Event) -> dict[str, str]:
+        device = event.data.get("device_name", "MotionCam")
+        return {
+            LOGBOOK_ENTRY_NAME: device,
+            LOGBOOK_ENTRY_MESSAGE: _tr(hass, "photo_received"),
+            LOGBOOK_ENTRY_ICON: "mdi:image-multiple",
+        }
+
     async_describe_event(DOMAIN, EVENT_AJAX_ARMED, async_describe_armed)
     async_describe_event(DOMAIN, EVENT_AJAX_DISARMED, async_describe_disarmed)
     async_describe_event(DOMAIN, EVENT_AJAX_ARMED_NIGHT, async_describe_armed_night)
@@ -309,3 +328,4 @@ def async_describe_events(
     async_describe_event(DOMAIN, EVENT_AJAX_SMART_LOCK_DOORBELL, async_describe_smart_lock_doorbell)
     async_describe_event(DOMAIN, EVENT_AJAX_SCENARIO_TRIGGERED, async_describe_scenario)
     async_describe_event(DOMAIN, EVENT_AJAX_CAMERA_DETECTION, async_describe_camera_detection)
+    async_describe_event(DOMAIN, EVENT_AJAX_MOTIONCAM_PHOTO, async_describe_motioncam_photo)

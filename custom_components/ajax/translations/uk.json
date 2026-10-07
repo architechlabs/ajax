@@ -389,6 +389,11 @@
         "name": "Канал {number} Додатковий"
       }
     },
+    "image": {
+      "photo": {
+        "name": "Фото {number}"
+      }
+    },
     "device_tracker": {
       "position": {
         "name": "Позиція"

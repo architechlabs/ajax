@@ -389,6 +389,11 @@
         "name": "Canal {number} Secondaire"
       }
     },
+    "image": {
+      "photo": {
+        "name": "Photo {number}"
+      }
+    },
     "device_tracker": {
       "position": {
         "name": "Position"

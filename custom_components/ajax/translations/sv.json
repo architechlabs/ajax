@@ -389,6 +389,11 @@
         "name": "Kanal {number} Sub"
       }
     },
+    "image": {
+      "photo": {
+        "name": "Foto {number}"
+      }
+    },
     "device_tracker": {
       "position": {
         "name": "Position"

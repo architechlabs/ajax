@@ -127,6 +127,7 @@ def test_async_describe_events_registers_all_event_types() -> None:
         logbook.EVENT_AJAX_SMART_LOCK_DOORBELL,
         logbook.EVENT_AJAX_SCENARIO_TRIGGERED,
         logbook.EVENT_AJAX_CAMERA_DETECTION,
+        logbook.EVENT_AJAX_MOTIONCAM_PHOTO,
     }
     assert expected.issubset(captured.keys())
 
@@ -248,6 +249,21 @@ def test_describe_camera_detection() -> None:
     assert out[logbook.LOGBOOK_ENTRY_NAME] == "Garden Cam"
     assert out[logbook.LOGBOOK_ENTRY_MESSAGE] == "detected a person"
     assert out[logbook.LOGBOOK_ENTRY_ICON] == "mdi:cctv"
+
+
+def test_describe_motioncam_photo() -> None:
+    cb = _describers()[logbook.EVENT_AJAX_MOTIONCAM_PHOTO]
+    out = cb(_event({"device_name": "Motion and Cam"}))  # type: ignore[operator]
+    assert out[logbook.LOGBOOK_ENTRY_NAME] == "Motion and Cam"
+    assert out[logbook.LOGBOOK_ENTRY_MESSAGE] == "Photo received"
+    assert out[logbook.LOGBOOK_ENTRY_ICON] == "mdi:image-multiple"
+
+
+def test_describe_motioncam_photo_default_name() -> None:
+    cb = _describers()[logbook.EVENT_AJAX_MOTIONCAM_PHOTO]
+    out = cb(_event({}))  # type: ignore[operator]
+    assert out[logbook.LOGBOOK_ENTRY_NAME] == "MotionCam"
+    assert out[logbook.LOGBOOK_ENTRY_MESSAGE] == "Photo received"
 
 
 def test_describe_camera_detection_default_name() -> None:

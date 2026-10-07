@@ -114,3 +114,26 @@ class _CamerasMixin(AjaxRestClientBase):
         """
         data = await self._request("GET", f"user/{self.user_id}/hubs/{hub_id}/cameras/{camera_id}/stream")
         return data.get("url", "")  # type: ignore[no-any-return]
+
+    async def async_get_hub_logs(self, hub_id: str, page: int = 1) -> list[dict[str, Any]]:
+        """Get one page of hub event-log entries.
+
+        MotionCam alarm photos are not camera snapshots. They are attached to
+        log rows (``PHOTOS_RESOURCE_DESCRIPTION``) on this endpoint.
+
+        Args:
+            hub_id: Hub ID
+            page: 1-based page, clamped to the API maximum of 50
+
+        Returns:
+            List of log-entry dictionaries. A non-list payload becomes an empty list.
+        """
+        if not self.user_id:
+            raise AjaxRestApiError("No user_id available. Call async_login() first.")
+        safe_page = 1
+        if isinstance(page, int) and not isinstance(page, bool):
+            safe_page = min(max(page, 1), 50)
+        data = await self._request("GET", f"user/{self.user_id}/hubs/{hub_id}/logs?page={safe_page}")
+        if not isinstance(data, list):
+            return []
+        return [item for item in data if isinstance(item, dict)]
