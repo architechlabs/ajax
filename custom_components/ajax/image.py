@@ -22,6 +22,7 @@ from urllib.parse import quote, urlsplit
 import aiohttp
 from aiohttp import web
 from homeassistant.components import frontend
+from homeassistant.components.http.auth import async_sign_path
 from homeassistant.components.panel_custom import async_register_panel
 from homeassistant.components.persistent_notification import async_create
 from homeassistant.core import HomeAssistant
@@ -41,9 +42,10 @@ from .models import AjaxDevice
 _LOGGER = logging.getLogger(__name__)
 PARALLEL_UPDATES = 1
 
-LOG_CACHE_SECONDS = 20
+LOG_CACHE_SECONDS = 5
 RETRY_WINDOW_SECONDS = 60
-POLL_INTERVAL = timedelta(seconds=15)
+POLL_INTERVAL = timedelta(seconds=5)
+_NOTIFICATION_TTL = timedelta(hours=12)
 MAX_PHOTO_BYTES = 8 * 1024 * 1024
 MAX_PHOTOS_PER_DEVICE = 100
 BACKFILL_PAGES = 5
@@ -56,7 +58,6 @@ _PANEL_KEY = "ajax_photo_panel_registered"
 _GALLERY_URL = "/api/ajax/photos"
 _PANEL_PATH = "ajax-photos"
 _GALLERY_DEVICE_URL = "homeassistant://ajax-photos"
-_NOTIFIED_KEY = "ajax_photo_gallery_notified"
 
 
 async def async_setup_entry(
@@ -198,13 +199,13 @@ class MotionCamPhotoStore:
                 self._primed.add(device.id)
                 for burst in bursts:
                     self._track_retry(hub_id, burst)
-                    saved = await self._save_burst(device, burst)
+                    saved, new_files = await self._save_burst(device, burst)
                     if first_sight:
                         if saved:
                             self._announced[burst.event_id] = None
                         continue
-                    if saved and burst.event_id not in self._announced:
-                        self._announce(device, burst.event_id, saved)
+                    if new_files and burst.event_id not in self._announced:
+                        self._announce(device, burst.event_id, saved, new_files[-1])
 
     async def _hub_logs(self, hub_id: str) -> list[dict[str, Any]] | None:
         """Return page 1 plus, on the first success, a few older pages."""
@@ -267,17 +268,22 @@ class MotionCamPhotoStore:
             return
         self._retry_until.pop(key, None)
 
-    async def _save_burst(self, device: AjaxDevice, burst: PhotoBurst) -> int:
-        """Write READY frames that are not already on disk. Return how many exist."""
+    async def _save_burst(self, device: AjaxDevice, burst: PhotoBurst) -> tuple[int, list[str]]:
+        """Write READY frames that are not already on disk.
+
+        Returns how many frames exist and the filenames written on this pass.
+        """
         device_key = safe_device_id(device.id)
         if device_key is None:
-            return 0
+            return 0, []
         root = photo_media_root(self.coordinator.hass)
         saved = 0
+        new_files: list[str] = []
         for frame, link in enumerate(burst.links, start=1):
             if link.status != "READY" or not link.url:
                 continue
-            path = root / device_key / f"{burst.timestamp_ms}_{frame}.jpg"
+            filename = f"{burst.timestamp_ms}_{frame}.jpg"
+            path = root / device_key / filename
             if path.is_file() and path.stat().st_size > 0:
                 saved += 1
                 continue
@@ -286,10 +292,11 @@ class MotionCamPhotoStore:
                 continue
             await asyncio.to_thread(_write_photo, path, jpeg, root, device_key, device.name)
             saved += 1
-        return saved
+            new_files.append(filename)
+        return saved, new_files
 
-    def _announce(self, device: AjaxDevice, event_id: str, photo_count: int) -> None:
-        """Write one Activity line per new burst, attached to the motion entity."""
+    def _announce(self, device: AjaxDevice, event_id: str, photo_count: int, filename: str) -> None:
+        """Write one Activity line and one notification for a new burst."""
         if not event_id or event_id in self._announced or photo_count < 1:
             return
         hass = self.coordinator.hass
@@ -308,6 +315,22 @@ class MotionCamPhotoStore:
         if entity_id:
             payload["entity_id"] = entity_id
         bus.async_fire(EVENT_AJAX_MOTIONCAM_PHOTO, payload)
+        self._notify_photo(device, event_id, photo_count, filename)
+
+    def _notify_photo(self, device: AjaxDevice, event_id: str, photo_count: int, filename: str) -> None:
+        """Post the new picture to the Home Assistant notifications drawer."""
+        hass = self.coordinator.hass
+        device_key = safe_device_id(device.id)
+        try:
+            signed = _signed_photo_path(hass, device_key, filename) if device_key else None
+            async_create(
+                hass,
+                photo_notification_message(device.name, signed, photo_count),
+                title=device.name,
+                notification_id=f"ajax_photo_{_safe_note_id(event_id)}",
+            )
+        except Exception:
+            _LOGGER.debug("Could not post Ajax photo notification", exc_info=True)
 
     async def _download(self, url: str) -> bytes | None:
         """Download one READY photo. Absolute CDN links are fetched with no Ajax credentials."""
@@ -363,6 +386,33 @@ def safe_device_id(device_id: str) -> str | None:
     if _DEVICE_ID.fullmatch(device_id):
         return device_id
     return None
+
+
+def photo_notification_message(device_name: str, signed_url: str | None, photo_count: int) -> str:
+    """Notification text, including the picture when a signed URL is available."""
+    if photo_count > 1:
+        text = f"{device_name} received {photo_count} photos."
+    else:
+        text = f"{device_name} received a photo."
+    if signed_url:
+        text += f"\n\n![photo]({signed_url})"
+    return text + "\n\n[Open Ajax photos](/ajax-photos)"
+
+
+def _signed_photo_path(hass: HomeAssistant, device_id: str, filename: str) -> str | None:
+    """Return a temporary signed path the notification drawer can load."""
+    path = f"/api/ajax/photos/{quote(device_id)}/{quote(filename)}"
+    try:
+        return async_sign_path(hass, path, _NOTIFICATION_TTL, use_content_user=True)
+    except (KeyError, TypeError, RuntimeError, ValueError):
+        _LOGGER.debug("Could not sign Ajax photo notification URL", exc_info=True)
+        return None
+
+
+def _safe_note_id(event_id: str) -> str:
+    """Keep a notification id inside the characters Home Assistant accepts."""
+    cleaned = re.sub(r"[^A-Za-z0-9_-]", "", event_id)
+    return cleaned[:40] or "photo"
 
 
 def _write_photo(path: Path, jpeg: bytes, root: Path, device_key: str, device_name: str) -> None:
@@ -534,31 +584,75 @@ def render_photo_gallery(frames: list[GalleryFrame]) -> str:
 
 _PANEL_JS = """
 class AjaxPhotosPanel extends HTMLElement {
+  constructor() {
+    super();
+    this._seen = new Set();
+    this._blobs = new Map();
+    this._timer = null;
+    this._lightbox = null;
+    this._onKey = null;
+    this._started = false;
+  }
+
   set hass(hass) {
-    if (this._hass) {
+    this._hass = hass;
+    if (!this._started) {
+      this._started = true;
+      this._build();
+      this._refresh();
+    }
+  }
+
+  connectedCallback() {
+    this._startTimer();
+  }
+
+  disconnectedCallback() {
+    this._stopTimer();
+    this._close();
+  }
+
+  _startTimer() {
+    if (this._timer) {
       return;
     }
-    this._hass = hass;
-    this._load();
+    this._timer = setInterval(() => this._refresh(), 5000);
+  }
+
+  _stopTimer() {
+    if (!this._timer) {
+      return;
+    }
+    clearInterval(this._timer);
+    this._timer = null;
   }
 
   async _authFetch(url) {
-    if (this._hass.fetchWithAuth) {
-      return this._hass.fetchWithAuth(url);
+    if (!this._hass || !this._hass.fetchWithAuth) {
+      throw new Error("authenticated fetch unavailable");
     }
-    return fetch(url, {
-      headers: { Authorization: "Bearer " + this._hass.auth.data.access_token },
-    });
+    return this._hass.fetchWithAuth(url);
   }
 
-  async _load() {
-    this.style.display = "block";
-    this.style.height = "100%";
-    this.style.overflow = "auto";
-    this.style.background = "#111";
-    this.style.color = "#eee";
-    this.style.fontFamily = "sans-serif";
-    this.innerHTML = "<p style='padding:24px'>Loading photos...</p>";
+  _build() {
+    this.style.cssText = "display:flex;flex-direction:column;height:100%;min-height:0;overflow:hidden;background:#111;color:#eee;font-family:sans-serif;box-sizing:border-box;";
+    const bar = document.createElement("div");
+    bar.style.cssText = "display:flex;align-items:center;gap:4px;flex:0 0 auto;padding:4px 8px;background:#1c1c1c;";
+    const menu = document.createElement("ha-menu-button");
+    const title = document.createElement("div");
+    title.textContent = "Ajax photos";
+    title.style.cssText = "font-size:1.2rem;font-weight:600;";
+    bar.append(menu, title);
+    this._list = document.createElement("div");
+    this._list.style.cssText = "flex:1 1 auto;min-height:0;overflow-y:auto;padding:16px;max-width:920px;width:100%;margin:0 auto;box-sizing:border-box;";
+    this.append(bar, this._list);
+    this._startTimer();
+  }
+
+  async _refresh() {
+    if (!this._list) {
+      return;
+    }
     let photos = [];
     try {
       const response = await this._authFetch("/api/ajax/photos/index");
@@ -568,19 +662,31 @@ class AjaxPhotosPanel extends HTMLElement {
       const payload = await response.json();
       photos = payload.photos || [];
     } catch (err) {
-      this.innerHTML = "<p style='padding:24px'>Photos could not be loaded.</p>";
+      if (!this._seen.size) {
+        this._list.textContent = "Photos could not be loaded.";
+      }
       return;
     }
+    const ids = new Set(photos.map((photo) => photo.device_id + "/" + photo.filename));
+    let changed = ids.size !== this._seen.size;
+    for (const id of ids) {
+      if (!this._seen.has(id)) {
+        changed = true;
+        break;
+      }
+    }
+    this._seen = ids;
+    if (changed || !this._list.childElementCount) {
+      this._render(photos);
+    }
+  }
+
+  _render(photos) {
+    this._list.textContent = "";
     if (!photos.length) {
-      this.innerHTML = "<main style='padding:24px'><h1>Ajax photos</h1><p>No photos yet. They appear here after the MotionCam sends a picture.</p></main>";
+      this._list.textContent = "No photos yet. They appear here after the MotionCam sends a picture.";
       return;
     }
-    const main = document.createElement("main");
-    main.style.cssText = "box-sizing:border-box;max-width:920px;margin:0 auto;padding:24px";
-    const title = document.createElement("h1");
-    title.textContent = "Ajax photos";
-    title.style.cssText = "font-size:1.4rem;font-weight:600;margin:0 0 20px";
-    main.appendChild(title);
     let lastKey = "";
     let frames = null;
     for (const photo of photos) {
@@ -598,28 +704,35 @@ class AjaxPhotosPanel extends HTMLElement {
         frames = document.createElement("div");
         frames.style.cssText = "display:flex;gap:12px;overflow-x:auto;padding-bottom:8px";
         section.append(heading, when, frames);
-        main.appendChild(section);
+        this._list.appendChild(section);
       }
       const figure = document.createElement("figure");
       figure.style.cssText = "margin:0;min-width:220px";
       const img = document.createElement("img");
       img.alt = photo.device_name + " photo " + photo.frame;
-      img.style.cssText = "display:block;max-height:420px;max-width:100%;background:#000";
+      img.style.cssText = "display:block;max-height:420px;max-width:100%;background:#000;cursor:pointer";
       const fileUrl = "/api/ajax/photos/" + encodeURIComponent(photo.device_id) + "/" + encodeURIComponent(photo.filename);
-      this._show(img, fileUrl);
+      const cached = this._blobs.get(fileUrl);
+      if (cached) {
+        img.src = cached;
+      } else {
+        this._show(img, fileUrl);
+      }
+      img.addEventListener("click", () => this._open(img, fileUrl, photo.filename, photo.device_name));
       const caption = document.createElement("figcaption");
       caption.style.marginTop = "8px";
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = "Download";
       button.style.cssText = "background:#3ddc84;color:#05210f;font-weight:600;border:0;padding:6px 12px;border-radius:16px;cursor:pointer";
-      button.addEventListener("click", () => this._download(fileUrl, photo.filename));
+      button.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        this._download(fileUrl, photo.filename);
+      });
       caption.appendChild(button);
       figure.append(img, caption);
       frames.appendChild(figure);
     }
-    this.innerHTML = "";
-    this.appendChild(main);
   }
 
   async _show(img, url) {
@@ -628,9 +741,65 @@ class AjaxPhotosPanel extends HTMLElement {
       if (!response.ok) {
         return;
       }
-      img.src = URL.createObjectURL(await response.blob());
+      const blobUrl = URL.createObjectURL(await response.blob());
+      this._blobs.set(url, blobUrl);
+      img.src = blobUrl;
     } catch (err) {
       img.alt = "Photo unavailable";
+    }
+  }
+
+  async _open(img, fileUrl, filename, name) {
+    let blobUrl = img.src && img.src.startsWith("blob:") ? img.src : this._blobs.get(fileUrl);
+    if (!blobUrl) {
+      await this._show(img, fileUrl);
+      blobUrl = this._blobs.get(fileUrl);
+    }
+    if (!blobUrl) {
+      return;
+    }
+    this._close();
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:16px;box-sizing:border-box;";
+    overlay.addEventListener("click", () => this._close());
+    const picture = document.createElement("img");
+    picture.src = blobUrl;
+    picture.alt = name;
+    picture.style.cssText = "max-width:100%;max-height:80vh;object-fit:contain;";
+    picture.addEventListener("click", (ev) => ev.stopPropagation());
+    const row = document.createElement("div");
+    row.style.cssText = "display:flex;gap:12px;";
+    row.addEventListener("click", (ev) => ev.stopPropagation());
+    const close = document.createElement("button");
+    close.type = "button";
+    close.textContent = "Close";
+    close.style.cssText = "background:#333;color:#fff;font-weight:600;border:0;padding:8px 16px;border-radius:16px;cursor:pointer";
+    close.addEventListener("click", () => this._close());
+    const download = document.createElement("button");
+    download.type = "button";
+    download.textContent = "Download";
+    download.style.cssText = "background:#3ddc84;color:#05210f;font-weight:600;border:0;padding:8px 16px;border-radius:16px;cursor:pointer";
+    download.addEventListener("click", () => this._download(fileUrl, filename));
+    row.append(close, download);
+    overlay.append(picture, row);
+    this.appendChild(overlay);
+    this._lightbox = overlay;
+    this._onKey = (ev) => {
+      if (ev.key === "Escape") {
+        this._close();
+      }
+    };
+    window.addEventListener("keydown", this._onKey);
+  }
+
+  _close() {
+    if (this._onKey) {
+      window.removeEventListener("keydown", this._onKey);
+      this._onKey = null;
+    }
+    if (this._lightbox) {
+      this._lightbox.remove();
+      this._lightbox = null;
     }
   }
 
@@ -694,16 +863,6 @@ async def _async_register_gallery(hass: HomeAssistant) -> None:
             show_in_sidebar=True,
         )
     hass.data[_PANEL_KEY] = True
-    if not hass.data.get(_NOTIFIED_KEY):
-        async_create(
-            hass,
-            "MotionCam pictures are listed under **Ajax photos** in the sidebar. "
-            "On the Motion and Cam device page, **Visit** opens the same list, "
-            "with a Download button on each photo.\n\n[Open Ajax photos](/ajax-photos)",
-            title="Ajax photos",
-            notification_id="ajax_photos_where",
-        )
-        hass.data[_NOTIFIED_KEY] = True
     _LOGGER.info("Ajax photos gallery is available in the sidebar at /ajax-photos")
 
 
@@ -743,7 +902,11 @@ class AjaxPhotoPanelView(HomeAssistantView):
 
     async def get(self, request: web.Request) -> web.Response:
         """Return the panel module."""
-        return web.Response(text=_PANEL_JS, content_type="text/javascript")
+        return web.Response(
+            text=_PANEL_JS,
+            content_type="text/javascript",
+            headers={"Cache-Control": "no-cache"},
+        )
 
 
 class AjaxPhotoGalleryView(HomeAssistantView):

@@ -2,17 +2,21 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from custom_components.ajax.api import AjaxRestApi
 from custom_components.ajax.image import (
+    LOG_CACHE_SECONDS,
+    POLL_INTERVAL,
     GalleryFrame,
     MotionCamPhotoStore,
     async_expose_photo_gallery,
     async_remove_photo_entities,
     photo_file_response,
+    photo_notification_message,
     render_photo_gallery,
     resolve_photo_file,
 )
@@ -172,6 +176,18 @@ async def test_relative_photo_url_uses_the_session_token(tmp_path: Path) -> None
     assert call.kwargs["headers"]["X-Session-Token"] == "token"
     assert call.kwargs["allow_redirects"] is False
     api.async_get_camera_snapshot.assert_not_awaited()
+
+
+def test_photo_notification_includes_the_picture_and_gallery_link() -> None:
+    message = photo_notification_message("Motion and Cam", "/api/ajax/photos/dev1/100_1.jpg?authSig=1", 1)
+    assert "Motion and Cam received a photo." in message
+    assert "![photo](/api/ajax/photos/dev1/100_1.jpg?authSig=1)" in message
+    assert "[Open Ajax photos](/ajax-photos)" in message
+
+
+def test_gallery_polls_page_one_every_five_seconds() -> None:
+    assert timedelta(seconds=5) == POLL_INTERVAL
+    assert LOG_CACHE_SECONDS == 5
 
 
 def test_download_response_is_an_attachment() -> None:
