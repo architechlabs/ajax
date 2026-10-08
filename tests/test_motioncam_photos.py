@@ -5,6 +5,7 @@ from __future__ import annotations
 from custom_components.ajax._motioncam_photos import (
     is_motioncam_raw_type,
     parse_latest_photo_burst,
+    parse_photo_bursts,
 )
 
 
@@ -116,6 +117,18 @@ def test_newest_timestamp_wins_and_burst_is_capped_at_five() -> None:
     assert burst.event_id == "newer"
     assert len(burst.links) == 5
     assert burst.ready_urls[-1] == "https://cdn.example/4.jpg"
+
+
+def test_parse_photo_bursts_returns_every_burst_newest_first() -> None:
+    logs = [
+        _entry("dev", "older", 10, [{"url": "https://cdn.example/old.jpg", "status": "READY"}]),
+        _entry("other", "elsewhere", 99, [{"url": "https://cdn.example/nope.jpg", "status": "READY"}]),
+        _entry("dev", "fail", 30, [{"url": "https://cdn.example/bad.jpg", "status": "FAILED"}]),
+        _entry("dev", "newer", 20, [{"url": "https://cdn.example/new.jpg", "status": "READY"}]),
+    ]
+    bursts = parse_photo_bursts(logs, "dev")
+    assert [burst.event_id for burst in bursts] == ["newer", "older"]
+    assert bursts[0].ready_urls == ("https://cdn.example/new.jpg",)
 
 
 def test_non_list_and_failed_only_return_none() -> None:

@@ -57,20 +57,18 @@ def is_motioncam_raw_type(raw_type: str | None) -> bool:
     return "motioncam" in normalized
 
 
-def parse_latest_photo_burst(logs: object, device_id: str) -> PhotoBurst | None:
-    """Return the newest photo burst for ``device_id``, or None.
+def parse_photo_bursts(logs: object, device_id: str) -> list[PhotoBurst]:
+    """Return every photo burst for ``device_id``, newest first.
 
     Failed links are dropped. In-progress links are kept so the caller can
-    retry until Wings finishes. At most ``MAX_BURST_LINKS`` links are kept,
-    in the order Ajax sent them.
+    retry until Wings finishes. At most ``MAX_BURST_LINKS`` links are kept
+    per burst, in the order Ajax sent them. Other devices are ignored.
     """
     if not isinstance(logs, list) or not isinstance(device_id, str) or not device_id.strip():
-        return None
+        return []
 
     wanted = device_id.strip().lower()
-    best: PhotoBurst | None = None
-    best_index = -1
-
+    found: list[tuple[int, int, PhotoBurst]] = []
     for index, entry in enumerate(logs):
         if not isinstance(entry, dict):
             continue
@@ -82,21 +80,36 @@ def parse_latest_photo_burst(logs: object, device_id: str) -> PhotoBurst | None:
             continue
         timestamp_ms = _timestamp_ms(entry)
         event_id = _event_id(entry, device_id, timestamp_ms)
-        burst = PhotoBurst(
-            event_id=event_id,
-            device_id=device_id,
-            timestamp_ms=timestamp_ms,
-            links=tuple(links),
+        found.append(
+            (
+                timestamp_ms,
+                index,
+                PhotoBurst(
+                    event_id=event_id,
+                    device_id=device_id,
+                    timestamp_ms=timestamp_ms,
+                    links=tuple(links),
+                ),
+            )
         )
-        if (
-            best is None
-            or timestamp_ms > best.timestamp_ms
-            or (timestamp_ms == best.timestamp_ms and index > best_index)
-        ):
-            best = burst
-            best_index = index
 
-    return best
+    found.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    bursts: list[PhotoBurst] = []
+    seen: set[str] = set()
+    for _timestamp, _index, burst in found:
+        if burst.event_id in seen:
+            continue
+        seen.add(burst.event_id)
+        bursts.append(burst)
+    return bursts
+
+
+def parse_latest_photo_burst(logs: object, device_id: str) -> PhotoBurst | None:
+    """Return the newest photo burst for ``device_id``, or None."""
+    bursts = parse_photo_bursts(logs, device_id)
+    if not bursts:
+        return None
+    return bursts[0]
 
 
 def _event_id(entry: dict[str, object], device_id: str, timestamp_ms: int) -> str:
