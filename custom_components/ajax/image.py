@@ -21,14 +21,17 @@ from urllib.parse import quote, urlsplit
 
 import aiohttp
 from aiohttp import web
+from homeassistant.components import frontend
 from homeassistant.components.panel_custom import async_register_panel
+from homeassistant.components.persistent_notification import async_create
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.http import HomeAssistantView
 
 from . import AjaxConfigEntry
+from ._ids import find_device
 from ._motioncam_photos import PhotoBurst, is_motioncam_raw_type, parse_photo_bursts
 from .api import AjaxRestApiError
 from .const import AJAX_REST_API_TIMEOUT, EVENT_AJAX_MOTIONCAM_PHOTO
@@ -52,6 +55,8 @@ _PANEL_KEY = "ajax_photo_panel_registered"
 
 _GALLERY_URL = "/api/ajax/photos"
 _PANEL_PATH = "ajax-photos"
+_GALLERY_DEVICE_URL = "homeassistant://ajax-photos"
+_NOTIFIED_KEY = "ajax_photo_gallery_notified"
 
 
 async def async_setup_entry(
@@ -63,6 +68,7 @@ async def async_setup_entry(
     async_remove_photo_entities(hass, entry.entry_id)
     await _async_register_gallery(hass)
     coordinator = entry.runtime_data
+    async_expose_photo_gallery(hass, coordinator)
     store = MotionCamPhotoStore(coordinator, async_add_entities)
     entry.async_on_unload(async_track_time_interval(hass, store.async_tick, POLL_INTERVAL))
     entry.async_create_background_task(hass, store.async_refresh(), "ajax_motioncam_photos")
@@ -78,6 +84,29 @@ def async_remove_photo_entities(hass: HomeAssistant, entry_id: str) -> None:
         unique_id = entity.unique_id or ""
         if _PHOTO_ENTITY.search(unique_id):
             registry.async_remove(entity.entity_id)
+
+
+def async_expose_photo_gallery(hass: HomeAssistant, coordinator: AjaxDataCoordinator) -> None:
+    """Put a Visit button on each MotionCam device page that opens the gallery.
+
+    The device page cannot host a photo card. ``homeassistant://`` configuration
+    URLs become an in-app Visit button on that page.
+    """
+    account = coordinator.account
+    if account is None:
+        return
+    try:
+        registry = dr.async_get(hass)
+    except (KeyError, TypeError, AttributeError, RuntimeError):
+        return
+    for space in account.spaces.values():
+        for device in space.devices.values():
+            if not is_motioncam_raw_type(device.raw_type):
+                continue
+            found = find_device(registry, coordinator.entry_id, device.id)
+            if found is None or found.configuration_url == _GALLERY_DEVICE_URL:
+                continue
+            registry.async_update_device(found.id, configuration_url=_GALLERY_DEVICE_URL)
 
 
 def motion_entity_id(hass: HomeAssistant, entry_id: str, device_id: str) -> str | None:
@@ -162,6 +191,7 @@ class MotionCamPhotoStore:
             logs = await self._hub_logs(hub_id)
             if logs is None:
                 continue
+            async_expose_photo_gallery(self.coordinator.hass, self.coordinator)
             for device in devices:
                 bursts = parse_photo_bursts(logs, device.id)
                 first_sight = device.id not in self._primed
@@ -631,16 +661,50 @@ async def _async_register_gallery(hass: HomeAssistant) -> None:
     hass.http.register_view(AjaxPhotoIndexView())
     hass.http.register_view(AjaxPhotoFileView())
     hass.http.register_view(AjaxPhotoPanelView())
-    await async_register_panel(
-        hass,
-        frontend_url_path=_PANEL_PATH,
-        webcomponent_name="ajax-photos-panel",
-        sidebar_title="Ajax photos",
-        sidebar_icon="mdi:image-multiple",
-        module_url="/api/ajax/photos/panel.js",
-        require_admin=False,
-    )
+    try:
+        await async_register_panel(
+            hass,
+            frontend_url_path=_PANEL_PATH,
+            webcomponent_name="ajax-photos-panel",
+            sidebar_title="Ajax photos",
+            sidebar_icon="mdi:image-multiple",
+            module_url="/api/ajax/photos/panel.js",
+            require_admin=False,
+        )
+    except ValueError:
+        _LOGGER.debug("Ajax photos sidebar panel already exists; refreshing it")
+    if frontend.async_panel_exists(hass, _PANEL_PATH):
+        frontend.async_register_built_in_panel(
+            hass,
+            "custom",
+            sidebar_title="Ajax photos",
+            sidebar_icon="mdi:image-multiple",
+            frontend_url_path=_PANEL_PATH,
+            config={
+                "_panel_custom": {
+                    "name": "ajax-photos-panel",
+                    "embed_iframe": False,
+                    "trust_external": False,
+                    "handle_safe_area": False,
+                    "module_url": "/api/ajax/photos/panel.js",
+                }
+            },
+            require_admin=False,
+            update=True,
+            show_in_sidebar=True,
+        )
     hass.data[_PANEL_KEY] = True
+    if not hass.data.get(_NOTIFIED_KEY):
+        async_create(
+            hass,
+            "MotionCam pictures are listed under **Ajax photos** in the sidebar. "
+            "On the Motion and Cam device page, **Visit** opens the same list, "
+            "with a Download button on each photo.\n\n[Open Ajax photos](/ajax-photos)",
+            title="Ajax photos",
+            notification_id="ajax_photos_where",
+        )
+        hass.data[_NOTIFIED_KEY] = True
+    _LOGGER.info("Ajax photos gallery is available in the sidebar at /ajax-photos")
 
 
 class AjaxPhotoIndexView(HomeAssistantView):

@@ -10,6 +10,7 @@ from custom_components.ajax.api import AjaxRestApi
 from custom_components.ajax.image import (
     GalleryFrame,
     MotionCamPhotoStore,
+    async_expose_photo_gallery,
     async_remove_photo_entities,
     photo_file_response,
     render_photo_gallery,
@@ -192,6 +193,18 @@ def test_gallery_lists_a_download_for_each_photo() -> None:
     assert "Motion and Cam" in html
     assert "/api/ajax/photos/dev1/1700000000000_1.jpg?download=1" in html
     assert "Download" in html
+
+
+def test_expose_photo_gallery_adds_visit_link() -> None:
+    device = SimpleNamespace(id="ha-dev", configuration_url=None)
+    registry = MagicMock()
+    coordinator = SimpleNamespace(entry_id="entry", account=_account(_device("MotionCamPhod")))
+    with (
+        patch("custom_components.ajax.image.dr.async_get", return_value=registry),
+        patch("custom_components.ajax.image.find_device", return_value=device),
+    ):
+        async_expose_photo_gallery(SimpleNamespace(), coordinator)  # type: ignore[arg-type]
+    registry.async_update_device.assert_called_once_with("ha-dev", configuration_url="homeassistant://ajax-photos")
 
 
 def test_remove_photo_entities_drops_only_photo_rows() -> None:
