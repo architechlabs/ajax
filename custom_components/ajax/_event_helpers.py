@@ -1,6 +1,6 @@
-"""Shared helpers for SSE and Ajax event managers.
+"""Shared helpers for the Ajax SQS event manager.
 
-Both `legacy cloud event manager` and `legacy cloud event manager` need
+The SQS event manager needs
 identical plumbing around video edges, doorbell rings and channel state
 updates. The `EventHandlerMixin` provides a single, canonical
 implementation so they stay consistent.
@@ -269,7 +269,7 @@ class EventHandlerMixin:
     def _request_discovery_refresh(self, source_id: str) -> None:
         """Ask the coordinator to refresh when an unknown device appears.
 
-        legacy real-time can reference a device added to the Ajax account since the
+        SQS can reference a device added to the Ajax account since the
         last poll. A normal `async_request_refresh` lets `_async_update_devices`
         pick it up and emit `SIGNAL_NEW_DEVICE` on the next cycle, instead of
         waiting up to an hour for the next full metadata refresh. Throttled so

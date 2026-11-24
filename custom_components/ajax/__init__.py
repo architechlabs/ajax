@@ -34,11 +34,14 @@ from .const import (
     CONF_AJAX_USER_ID,
     CONF_API_KEY,
     CONF_AUTH_MODE,
+    CONF_AWS_ACCESS_KEY_ID,
+    CONF_AWS_SECRET_ACCESS_KEY,
     CONF_DISCOVERED_MACS,
     CONF_DOOR_SENSOR_FAST_POLL,
     CONF_EMAIL,
     CONF_ENABLED_SPACES,
     CONF_PASSWORD,
+    CONF_QUEUE_NAME,
     CONF_REFRESH_TOKEN,
     CONF_RTSP_PASSWORD,
     CONF_RTSP_USERNAME,
@@ -101,6 +104,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: AjaxConfigEntry) -> bool
     password_hash = entry.data[CONF_PASSWORD]
     api_key = entry.data[CONF_API_KEY]
     totp_secret = entry.data.get(CONF_TOTP_SECRET)
+    # Optional Ajax-provided AWS SQS queue for real-time events.
+    aws_access_key_id = entry.data.get(CONF_AWS_ACCESS_KEY_ID)
+    aws_secret_access_key = entry.data.get(CONF_AWS_SECRET_ACCESS_KEY)
+    queue_name = entry.data.get(CONF_QUEUE_NAME)
 
     # Use a dedicated aiohttp session so this integration ignores HTTP(S)
     # proxy environment variables. The API transport enforces TLS validation
@@ -147,6 +154,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: AjaxConfigEntry) -> bool
         hass,
         entry,
         api,
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        queue_name=queue_name,
         enabled_spaces=enabled_spaces,
     )
 
@@ -185,7 +195,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: AjaxConfigEntry) -> bool
     coordinator._reload_config_snapshot = _reload_relevant_config(entry)
 
     # Listen for config/options updates: live-apply what can be, schedule a
-    # reload for connection-relevant changes (credentials, proxy, spaces…).
+    # reload for connection-relevant changes (credentials, AWS SQS, spaces…).
     entry.async_on_unload(entry.add_update_listener(_async_update_options))
 
     return True
@@ -211,7 +221,7 @@ def _reload_relevant_config(entry: AjaxConfigEntry) -> tuple[dict[str, Any], str
     """Return the part of the entry config that requires a reload to apply.
 
     ``entry.data`` mostly holds connection/credential settings (auth mode,
-    email/password, API key, proxy, AWS SQS, enabled spaces) that do need a
+    email/password, API key, AWS SQS, enabled spaces) that do need a
     reload to take effect. ``CONF_DISCOVERED_MACS`` is excluded: it only
     tracks which DHCP-discovered hubs have been associated with this entry
     for deduplication in the config flow and has no runtime effect, so

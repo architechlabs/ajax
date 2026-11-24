@@ -22,11 +22,14 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_AWS_ACCESS_KEY_ID,
+    CONF_AWS_SECRET_ACCESS_KEY,
     CONF_DOOR_SENSOR_FAST_POLL,
     CONF_ENABLED_SPACES,
     CONF_MONITORED_SPACES,
     CONF_NOTIFICATION_FILTER,
     CONF_PERSISTENT_NOTIFICATION,
+    CONF_QUEUE_NAME,
     CONF_RTSP_PASSWORD,
     CONF_RTSP_USERNAME,
     NOTIFICATION_FILTER_ALARMS_ONLY,
@@ -61,6 +64,9 @@ class AjaxOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Manage the options - main menu."""
         menu_options = ["enabled_spaces", "notifications", "polling_settings"]
+
+        # Ajax-provided AWS SQS queue for real-time events (direct mode).
+        menu_options.append("aws_credentials")
 
         # RTSP/ONVIF credentials are strictly local-network credentials.
         menu_options.append("rtsp_credentials")
@@ -237,6 +243,68 @@ class AjaxOptionsFlow(OptionsFlow):
         return self.async_show_form(
             step_id="polling_settings",
             data_schema=data_schema,
+        )
+
+    async def async_step_aws_credentials(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Manage AWS SQS credentials."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            # Update config entry data with new AWS credentials
+            new_data = {**self.config_entry.data}
+
+            # Only update if user provided new values (not empty)
+            if user_input.get(CONF_AWS_ACCESS_KEY_ID):
+                new_data[CONF_AWS_ACCESS_KEY_ID] = user_input[CONF_AWS_ACCESS_KEY_ID]
+            if user_input.get(CONF_AWS_SECRET_ACCESS_KEY):
+                new_data[CONF_AWS_SECRET_ACCESS_KEY] = user_input[CONF_AWS_SECRET_ACCESS_KEY]
+            if user_input.get(CONF_QUEUE_NAME):
+                new_data[CONF_QUEUE_NAME] = user_input[CONF_QUEUE_NAME]
+
+            # The update listener detects the data change and schedules the
+            # reload so the running SQSManager picks the new credentials up —
+            # without it, it keeps polling with the old ones forever.
+            if new_data != dict(self.config_entry.data):
+                self.hass.config_entries.async_update_entry(
+                    self.config_entry,
+                    data=new_data,
+                )
+
+            return self.async_create_entry(title="", data=self.config_entry.options)
+
+        # Get current AWS credentials from config entry data
+        current_access_key = self.config_entry.data.get(CONF_AWS_ACCESS_KEY_ID, "")
+        current_secret_key = self.config_entry.data.get(CONF_AWS_SECRET_ACCESS_KEY, "")
+        current_queue = self.config_entry.data.get(CONF_QUEUE_NAME, "")
+
+        # Build schema - show current values masked
+        data_schema = _Schema(
+            {
+                vol.Optional(
+                    CONF_AWS_ACCESS_KEY_ID,
+                    description={"suggested_value": current_access_key},
+                ): str,
+                vol.Optional(
+                    CONF_AWS_SECRET_ACCESS_KEY,
+                    description={"suggested_value": ""},  # Don't show secret, let user re-enter
+                ): str,
+                vol.Optional(
+                    CONF_QUEUE_NAME,
+                    description={"suggested_value": current_queue},
+                ): str,
+            }
+        )
+
+        # Show current configuration in description
+        return self.async_show_form(
+            step_id="aws_credentials",
+            data_schema=data_schema,
+            errors=errors,
+            description_placeholders={
+                "current_access_key": self._mask_credential(current_access_key),
+                "current_secret_key": self._mask_credential(current_secret_key),
+                "current_queue": current_queue or "—",
+            },
         )
 
     async def async_step_rtsp_credentials(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

@@ -60,14 +60,34 @@ def _runtime_snapshot(coordinator: Any) -> dict[str, Any]:
     }
 
 
+def _sqs_connected(sqs_client: Any) -> bool:
+    """Whether the SQS receiver thread is alive and holds a queue URL.
+
+    ``AjaxSQSClient`` exposes no ``is_connected`` accessor, so derive the
+    connection state from its existing attributes.
+    """
+    if sqs_client is None:
+        return False
+    thread = getattr(sqs_client, "_thread", None)
+    queue_url = getattr(sqs_client, "_queue_url", None)
+    return thread is not None and thread.is_alive() and queue_url is not None
+
+
 def _connectivity_snapshot(coordinator: Any) -> dict[str, Any]:
-    """Local connectivity status without touching the network."""
+    """REST / SQS / ONVIF connection status without touching the network."""
+    sqs = getattr(coordinator, "sqs_manager", None)
     onvif = getattr(coordinator, "onvif_manager", None)
+    sqs_client = getattr(sqs, "sqs_client", None) if sqs else None
     return {
         "ajax_rest_api": {
             "transport": "https",
             "host": "api.ajax.systems",
             "proxy": False,
+        },
+        "sqs": {
+            "enabled": sqs is not None,
+            "connected": _sqs_connected(sqs_client),
+            "seconds_since_last_event": _seconds_since(getattr(sqs, "_last_event_time", None)) if sqs else None,
         },
         "onvif": {
             "configured_count": len(onvif._clients) if onvif else 0,

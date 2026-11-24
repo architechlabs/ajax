@@ -2,7 +2,7 @@
 
 This module creates lock entities for Ajax LockBridge Jeweller devices.
 State comes from the enriched device record (lockStatus / doorStatus) and
-real-time legacy real-time events. Locking and unlocking are supported via the
+real-time SQS events. Locking and unlocking are supported via the
 dedicated Ajax ``LOCK_SMART_LOCK`` / ``UNLOCK_SMART_LOCK`` commands. A
 successful command also applies an optimistic state update (#88) so HA
 reflects it immediately instead of waiting for the next poll.
@@ -162,7 +162,7 @@ class AjaxLock(CoordinatorEntity[AjaxDataCoordinator], LockEntity):
         # realtime event arrives while disarmed, so without this the HA state
         # waits for the next poll. Stamping last_event_time reuses the existing
         # 30s freshness guard in _apply_smart_lock_rest_state, so a stale REST
-        # payload cannot bounce the state back; a real legacy real-time event or the
+        # payload cannot bounce the state back; a real SQS event or the
         # first poll after the window remains the final authority.
         smart_lock.is_locked = command == "LOCK_SMART_LOCK"
         smart_lock.last_event_tag = f"{verb}_command"

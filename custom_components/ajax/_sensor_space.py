@@ -119,7 +119,7 @@ def format_event_text(event: dict[str, Any], language: str = "en") -> str:
 
     # Use translated message if available (from SQS/coordinator)
     # Otherwise fall back to action-based lookup, translated via
-    # event_codes.EVENT_MESSAGES (the same 7-language table the legacy real-time
+    # event_codes.EVENT_MESSAGES (the same 7-language table the SQS real-time
     # managers already use) with a small English-only residual for the keys
     # EVENT_MESSAGES doesn't carry yet.
     message = event.get("message")

@@ -55,7 +55,12 @@ CONF_PERSISTENT_NOTIFICATION = "persistent_notification"
 CONF_MONITORED_SPACES = "monitored_spaces"
 CONF_ENABLED_SPACES = "enabled_spaces"  # Which spaces to load (filter devices/entities)
 
-# Direct API authentication. The hardened build intentionally has no proxy/AWS/SSE configuration.
+# AWS SQS configuration (optional - Ajax-provided queue for real-time events)
+CONF_AWS_ACCESS_KEY_ID = "aws_access_key_id"
+CONF_AWS_SECRET_ACCESS_KEY = "aws_secret_access_key"
+CONF_QUEUE_NAME = "queue_name"
+
+# Direct API authentication. The hardened build intentionally has no proxy/SSE configuration.
 CONF_AUTH_MODE = "auth_mode"
 AUTH_MODE_DIRECT = "direct"
 
@@ -81,7 +86,7 @@ AJAX_REST_API_TIMEOUT = 30  # seconds
 
 # Update intervals (seconds)
 UPDATE_INTERVAL = 30  # Default poll interval when disarmed (need faster updates)
-UPDATE_INTERVAL_ARMED = 60  # Poll interval when armed
+UPDATE_INTERVAL_ARMED = 60  # Poll interval when armed (SQS handles real-time)
 UPDATE_INTERVAL_DOOR_SENSORS = 5  # Fast poll interval for door sensors when disarmed
 # Right after a disarm, door contacts are polled for a while even when fast polling
 # is off or the proxy is used: realtime events can be missing then (#285).

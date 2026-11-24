@@ -311,7 +311,7 @@ class AjaxStateUpdaterMixin:
                     if sl_data.get("name"):
                         existing.name = sl_data["name"]
 
-            # Clean up API-discovered locks that disappeared; legacy real-time-
+            # Clean up API-discovered locks that disappeared; SQS-
             # discovered locks have no raw_data and must be preserved.
             if processed_ids and space.smart_locks:
                 existing_ids = set(space.smart_locks.keys())
@@ -324,7 +324,7 @@ class AjaxStateUpdaterMixin:
 
                         if removed_sl and not removed_sl.raw_data:
                             _LOGGER.debug(
-                                "Preserving legacy real-time-discovered smart lock '%s' (ID: %s)",
+                                "Preserving SQS-discovered smart lock '%s' (ID: %s)",
                                 removed_sl.name,
                                 sl_id,
                             )

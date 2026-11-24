@@ -474,6 +474,32 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
                         err,
                     )
 
+                # Also include SQS-discovered locks (not in API)
+                for sl_id, smart_lock in space.smart_locks.items():
+                    # Check if already in API data
+                    if any(sl.get("id") == sl_id for sl in smart_locks_data):
+                        continue
+                    # This is an SQS-discovered lock ("_source" value kept
+                    # from upstream so exported files stay comparable)
+                    smart_locks_data.append(
+                        {
+                            "id": sl_id,
+                            "name": smart_lock.name,
+                            "type": "SMART_LOCK",
+                            "_source": "sse_sqs_discovered",
+                            "_space_name": space.name,
+                            "_space_id": _space_id,
+                            "_is_locked": smart_lock.is_locked,
+                            "_is_door_open": smart_lock.is_door_open,
+                            "_last_event_tag": smart_lock.last_event_tag,
+                            "_last_event_time": smart_lock.last_event_time.isoformat()
+                            if smart_lock.last_event_time
+                            else None,
+                            "_last_changed_by": smart_lock.last_changed_by,
+                            "_raw_data": smart_lock.raw_data,
+                        }
+                    )
+
         # Write to file.
         # Redact sensitive fields before writing so the file is safe to share.
         from .diagnostics import redact_ajax_data
@@ -487,11 +513,14 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
 
         await hass.async_add_executor_job(write_json)
 
-        api_count = len(smart_locks_data)
+        # Count by source
+        api_count = sum(1 for sl in smart_locks_data if sl.get("_source") == "api")
+        sqs_count = sum(1 for sl in smart_locks_data if sl.get("_source") == "sse_sqs_discovered")
 
         message = (
             f"**Smart locks found:** {len(smart_locks_data)}\n"
-            f"- From official Ajax REST API: {api_count}\n\n"
+            f"- From official Ajax REST API: {api_count}\n"
+            f"- From SQS events: {sqs_count}\n\n"
             f"Saved to: {output_path}\n\n"
             "Check the JSON file for full details including all API fields."
         )
@@ -504,9 +533,10 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
         )
 
         _LOGGER.info(
-            "Smart locks data written to %s (%d from official Ajax REST API)",
+            "Smart locks data written to %s (%d from official Ajax REST API, %d from SQS)",
             output_path,
             api_count,
+            sqs_count,
         )
 
     if not hass.services.has_service(DOMAIN, SERVICE_GET_SMART_LOCKS):

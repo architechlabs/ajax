@@ -1,7 +1,7 @@
 """Door-sensor fast-polling mixin for ``AjaxDataCoordinator``.
 
 When the system is disarmed (or in night mode for sensors excluded from it),
-Ajax pushes no legacy real-time events, so door / transmitter / wire-input contacts are
+Ajax pushes no SQS events, so door / transmitter / wire-input contacts are
 polled on a fast 5 s loop for responsive UX. This subsystem is a self-contained
 mixin so the main coordinator file stays focused on the core update pipeline.
 

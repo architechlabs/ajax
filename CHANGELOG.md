@@ -1,10 +1,16 @@
 # Changelog
 
-## Unreleased — Hardened Direct Mode
+## Architech Labs fork — 0.39.4 (synced with upstream 0.39.4)
+
+### Changed
+* Synced with upstream foXaCe/ajax-security-hass 0.39.4 (2FA one-shot code, login lockout fixes, alarm handling for tilt/shock/unknown ALARM tags, ONVIF recovery, door-contact polling fixes, MAC masking).
+* Real-time events via the Ajax-provided AWS SQS queue are back (direct mode, optional). Existing entries that already store the AWS key, secret and queue name start receiving events without reconfiguration.
+
+## Hardened Direct Mode
 
 ### Security
 
-* Direct Enterprise API mode only; proxy, SSE relay and AWS SQS transports are removed from the shipped integration.
+* Direct Enterprise API mode only; proxy and SSE relay transports are removed from the shipped integration. AWS SQS (Ajax-provided queue) is the only real-time transport.
 * Ajax cloud requests are fixed to the official `https://api.ajax.systems/api` host with TLS verification, redirects disabled, and environment proxy settings disabled.
 * Diagnostics and local inventories redact credentials, tokens and network identifiers.
 

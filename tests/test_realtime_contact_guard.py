@@ -16,11 +16,10 @@ from custom_components.ajax import _coordinator_door_poll as door_poll, models
 from custom_components.ajax._device_apply import apply_device_payload
 from custom_components.ajax.coordinator import AjaxDataCoordinator
 from custom_components.ajax.models import AjaxAccount, AjaxDevice, AjaxSpace, DeviceType, SecurityState
+from custom_components.ajax.sqs_manager import SQSManager
 
-# Hardened direct-only build: the SSE/SQS transports these tests exercise are
-# not shipped, so the module is skipped instead of failing at import.
-SQSManager = pytest.importorskip("custom_components.ajax.sqs_manager").SQSManager
-SSEManager = pytest.importorskip("custom_components.ajax.sse_manager").SSEManager
+# Hardened direct-only build: only the SQS transport is shipped, so the SSE
+# variants of these upstream tests are not included.
 
 T0 = 1_000_000.0
 OBSERVED_LAG = 23.4
@@ -38,14 +37,6 @@ def _space(device: AjaxDevice) -> AjaxSpace:
 
 def _event(manager: str, device: AjaxDevice, tag: str, transition: str) -> None:
     space = _space(device)
-    if manager == "sse":
-        sse = object.__new__(SSEManager)
-        sse._find_device = lambda *_a: device  # type: ignore[method-assign]
-        if device.type == DeviceType.WIRE_INPUT:
-            sse._handle_wire_input_event(space, tag, "Door", "d1", transition)
-        else:
-            sse._handle_door_event(space, tag, "Door", "d1", transition)
-        return
     sqs = object.__new__(SQSManager)
     sqs._find_device = lambda *_a: device  # type: ignore[method-assign]
     sqs.coordinator = MagicMock()
@@ -62,7 +53,6 @@ def _poll(device: AjaxDevice, payload: dict) -> None:
     coord.api = SimpleNamespace(async_get_devices=AsyncMock(return_value=[{"id": "d1", **payload}]))
     coord.async_set_updated_data = MagicMock()
     coord._door_sensor_fast_poll_enabled = True
-    coord._sse_url = None
     with (
         patch.object(door_poll.asyncio, "sleep", AsyncMock(side_effect=[None, asyncio.CancelledError])),
         pytest.raises(asyncio.CancelledError),
@@ -76,7 +66,7 @@ CASES = [
 ]
 
 
-@pytest.mark.parametrize("manager", ["sse", "sqs"])
+@pytest.mark.parametrize("manager", ["sqs"])
 @pytest.mark.parametrize("reader", ["door_poll", "main_poll"])
 @pytest.mark.parametrize(("kind", "attr", "tag", "stale"), CASES)
 def test_stale_rest_state_is_ignored_then_accepted(manager, reader, kind, attr, tag, stale) -> None:
@@ -100,7 +90,7 @@ def test_stale_rest_state_is_ignored_then_accepted(manager, reader, kind, attr, 
     assert device.attributes[attr] is True
 
 
-@pytest.mark.parametrize("manager", ["sse", "sqs"])
+@pytest.mark.parametrize("manager", ["sqs"])
 def test_a_newer_realtime_event_always_wins(manager) -> None:
     device = _device()
     with patch.object(models.time, "time", return_value=T0):
@@ -109,7 +99,7 @@ def test_a_newer_realtime_event_always_wins(manager) -> None:
     assert device.attributes["door_opened"] is False
 
 
-@pytest.mark.parametrize("manager", ["sse", "sqs"])
+@pytest.mark.parametrize("manager", ["sqs"])
 def test_external_contact_is_guarded_separately(manager) -> None:
     device = _device()
     with patch.object(models.time, "time", return_value=T0):

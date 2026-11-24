@@ -1,29 +1,70 @@
 """Bootstrap mixin for ``AjaxDataCoordinator``.
 
 Owns the lazy initialisations the coordinator runs after the REST login
-is complete: build the in-memory account, build the in-memory account and persist local smart-lock metadata.
+is complete: build the in-memory account, persist / restore the
+SQS-discovered smart locks, and stand up the optional AWS-SQS manager
+(the Ajax-provided real-time queue) when the user has configured it.
+The hardened build ships no proxy / SSE transport.
 
-Cloud event transports are intentionally absent from this hardened build.
+The optional-import guard for SQS lives in this module — the
+coordinator does not need them anywhere else now that the init
+methods have moved.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from .models import AjaxAccount
+from homeassistant.helpers import issue_registry as ir
+
+from .const import DOMAIN
+from .event_codes import resolve_event_language
+from .models import AjaxAccount, AjaxSmartLock
 
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.storage import Store
 
     from .api import AjaxRestApi
+    from .sqs_manager import SQSManager
+
+# Optional SQS support — the coordinator __init__ leaves the manager at
+# None when the package is missing; the mixin keeps the guard local so
+# nothing else needs to know about the optional dependency.
+SQS_AVAILABLE = False
+_SQSManager: type | None = None
+_AjaxSQSClient: type | None = None
+try:
+    from .sqs_client import AjaxSQSClient as _AjaxSQSClient
+    from .sqs_manager import SQSManager as _SQSManager
+
+    SQS_AVAILABLE = True
+except ImportError:
+    pass
+
+# Storage schema version for SQS-discovered smart locks. Bumped only
+# when ``_async_migrate_smart_locks_store`` knows how to upgrade the
+# payload — see that method for the migration contract.
+SMART_LOCK_STORE_VERSION = 1
+
+# Home Assistant installs manifest ``requirements`` (here: ``aiobotocore``)
+# in the background on a fresh start. SQS init can run before pip finishes,
+# so the client raises ImportError("aiobotocore required"). Rather than give
+# up for the whole session (real-time events off until a manual restart), the
+# SQS bootstrap waits out a bounded window for the dependency to land. Module
+# constants so tests can shrink the wait. 18 × 10 s ≈ 3 min covers a slow
+# first install on low-end hardware; REST polling covers the gap meanwhile.
+SQS_AIOBOTOCORE_WAIT_ATTEMPTS = 18
+SQS_AIOBOTOCORE_WAIT_INTERVAL = 10  # seconds between import retries
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class AjaxBootstrapMixin:
-    """Coordinator mixin for account/bootstrap state."""
+    """Coordinator mixin: account init, smart-lock persistence, SQS bootstrap."""
 
     # Host attributes — provided by the coordinator __init__.
     if TYPE_CHECKING:
@@ -31,6 +72,13 @@ class AjaxBootstrapMixin:
         api: AjaxRestApi
         hass: HomeAssistant
         config_entry: ConfigEntry | None
+        sqs_manager: SQSManager | None
+        _aws_access_key_id: str | None
+        _aws_secret_access_key: str | None
+        _queue_name: str | None
+        _sqs_initialized: bool
+        _sqs_init_in_progress: bool
+        _smart_lock_store: Store[Any]
 
     # ------------------------------------------------------------------
     # Account
@@ -47,10 +95,229 @@ class AjaxBootstrapMixin:
             name=self.api.email.split("@")[0] if self.api.email else "Unknown",
             email=self.api.email or "",
         )
-        # Log only a truncated user_id — the full value is PII (and doubles as a
-        # session token in direct mode), so keep it out of shared INFO logs.
+        # Log only a truncated user_id — the full value is PII, so keep it out
+        # of shared INFO logs.
         _LOGGER.info(
             "Initialized account for %s (user_id: %s…)",
             self.account.name,
             self.account.user_id[:8],
         )
+
+    # ------------------------------------------------------------------
+    # Smart-lock store
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    async def _async_migrate_smart_locks_store(
+        old_major_version: int, old_minor_version: int, old_data: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Migrate the smart-locks ``Store[Any]`` payload across schema versions.
+
+        Current schema (v1) is ``space_id -> list[smart_lock_dict]``.
+        This is a placeholder: the day we bump ``SMART_LOCK_STORE_VERSION``
+        the upgrade code lives here.
+        """
+        _LOGGER.debug(
+            "Smart-lock store migration: %s.%s -> %s",
+            old_major_version,
+            old_minor_version,
+            SMART_LOCK_STORE_VERSION,
+        )
+        return old_data or {}
+
+    async def _async_save_smart_locks(self) -> None:
+        """Persist SQS-discovered smart locks to storage."""
+        if not self.account:
+            return
+        data: dict[str, list[dict[str, Any]]] = {}
+        for space_id, space in self.account.spaces.items():
+            locks = []
+            for sl in space.smart_locks.values():
+                # Only persist SQS-discovered locks (no raw_data from API).
+                if not sl.raw_data:
+                    locks.append(
+                        {
+                            "id": sl.id,
+                            "name": sl.name,
+                            "is_locked": sl.is_locked,
+                            "is_door_open": sl.is_door_open,
+                            "last_changed_by": sl.last_changed_by,
+                        }
+                    )
+            if locks:
+                data[space_id] = locks
+        if data:
+            await self._smart_lock_store.async_save(data)
+
+    async def _async_restore_smart_locks(self) -> None:
+        """Restore SQS-discovered smart locks from storage."""
+        if not self.account:
+            return
+        data = await self._smart_lock_store.async_load()
+        if not data or not isinstance(data, dict):
+            return
+        count = 0
+        for space_id, locks in data.items():
+            space = self.account.spaces.get(space_id)
+            if not space:
+                continue
+            for lock_data in locks:
+                sl_id = lock_data.get("id")
+                if not sl_id or sl_id in space.smart_locks:
+                    continue
+                smart_lock = AjaxSmartLock(
+                    id=sl_id,
+                    name=lock_data.get("name", f"Smart Lock {sl_id[:6]}"),
+                    space_id=space_id,
+                )
+                smart_lock.is_locked = lock_data.get("is_locked")
+                smart_lock.is_door_open = lock_data.get("is_door_open")
+                smart_lock.last_changed_by = lock_data.get("last_changed_by")
+                space.smart_locks[sl_id] = smart_lock
+                count += 1
+        if count:
+            _LOGGER.info("Restored %d SQS-discovered smart lock(s) from storage", count)
+
+    # ------------------------------------------------------------------
+    # AWS SQS (direct mode)
+    # ------------------------------------------------------------------
+
+    async def _async_init_sqs(self, wait_for_dependency: bool = True) -> None:
+        """Initialise AWS SQS for real-time events (optional).
+
+        SQS provides real-time event notifications (<1 s latency) that
+        trigger immediate REST API updates:
+        * SQS events → instant state updates.
+        * REST polling → baseline updates every 30 s as fallback.
+
+        Requires ``aiobotocore`` + AWS credentials. On failure the
+        integration falls back to REST-only mode without raising.
+
+        ``wait_for_dependency``: the initial-load attempt waits out a
+        deferred ``aiobotocore`` pip install (bounded window). Periodic
+        retries pass False — single quiet attempt per poll cycle, so a
+        genuinely missing dependency does not re-log a warning every few
+        minutes for the whole session.
+        """
+        if self._sqs_init_in_progress:
+            return  # a startup/retry attempt is already running — don't overlap
+
+        if not SQS_AVAILABLE:
+            _LOGGER.info("AWS SQS not available (aiobotocore not installed). Using REST API polling only.")
+            self._sqs_initialized = True  # Mark as "initialized" to prevent retries.
+            return
+
+        if not self._aws_access_key_id or not self._aws_secret_access_key or not self._queue_name:
+            _LOGGER.debug("AWS credentials not configured. Using REST API polling only.")
+            self._sqs_initialized = True
+            return
+
+        entry_id = self.config_entry.entry_id if self.config_entry else "unknown"
+        sqs_issue = f"sqs_init_failed_{entry_id}"
+
+        self._sqs_init_in_progress = True
+        try:
+            if wait_for_dependency:
+                _LOGGER.info("Initializing AWS SQS for real-time events...")
+
+            assert _AjaxSQSClient is not None  # Validated by SQS_AVAILABLE above.
+            assert _SQSManager is not None
+
+            # Build the client, waiting out a deferred ``aiobotocore`` install.
+            # On a fresh start HA provisions the manifest requirement in the
+            # background, so the constructor raises ImportError("aiobotocore
+            # required") until pip lands it. Retry within a bounded window so
+            # real-time events self-recover without a manual restart instead of
+            # staying off for the whole session (intermittent "aiobotocore
+            # required" at startup). REST polling covers the gap meanwhile.
+            sqs_client = None
+            attempts = SQS_AIOBOTOCORE_WAIT_ATTEMPTS if wait_for_dependency else 1
+            for attempt in range(attempts):
+                try:
+                    sqs_client = _AjaxSQSClient(
+                        aws_access_key_id=self._aws_access_key_id,
+                        aws_secret_access_key=self._aws_secret_access_key,
+                        queue_name=self._queue_name,
+                        hass_loop=self.hass.loop,
+                    )
+                    break
+                except ImportError:
+                    if attempt == 0 and wait_for_dependency:
+                        _LOGGER.info(
+                            "aiobotocore not installed yet — Home Assistant is still "
+                            "provisioning it; deferring SQS startup (REST polling meanwhile)"
+                        )
+                    if wait_for_dependency:
+                        await asyncio.sleep(SQS_AIOBOTOCORE_WAIT_INTERVAL)
+
+            if sqs_client is None:
+                if wait_for_dependency:
+                    _LOGGER.warning(
+                        "aiobotocore unavailable after ~%d s — real-time SQS deferred, using REST API "
+                        "polling meanwhile; will retry automatically once the dependency is installed",
+                        SQS_AIOBOTOCORE_WAIT_ATTEMPTS * SQS_AIOBOTOCORE_WAIT_INTERVAL,
+                    )
+                    ir.async_create_issue(
+                        self.hass,
+                        DOMAIN,
+                        sqs_issue,
+                        is_fixable=False,
+                        severity=ir.IssueSeverity.WARNING,
+                        translation_key="sqs_init_failed",
+                        translation_placeholders={"error": "aiobotocore required"},
+                    )
+                else:
+                    # Periodic retry: stay quiet — the initial attempt already
+                    # warned and raised the repair issue.
+                    _LOGGER.debug("aiobotocore still unavailable — SQS retry deferred to the next poll cycle")
+                # Leave _sqs_initialized False (transient): a later poll retries
+                # via the periodic-update branch, so SQS self-heals without a
+                # manual restart once pip finishes installing aiobotocore.
+                return
+
+            self.sqs_manager = _SQSManager(
+                coordinator=self,
+                sqs_client=sqs_client,
+            )
+
+            sqs_language = resolve_event_language(self.hass.config.language)
+            self.sqs_manager.set_language(sqs_language)
+
+            success = await self.sqs_manager.start()
+
+            if success:
+                _LOGGER.info("✓ AWS SQS initialized successfully - Real-time events enabled!")
+                self._sqs_initialized = True
+                ir.async_delete_issue(self.hass, DOMAIN, sqs_issue)
+            else:
+                _LOGGER.warning("Failed to start SQS - Falling back to REST API polling only")
+                self.sqs_manager = None
+                self._sqs_initialized = True  # config/network failure — not the aiobotocore race
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    sqs_issue,
+                    is_fixable=False,
+                    severity=ir.IssueSeverity.WARNING,
+                    translation_key="sqs_init_failed",
+                    translation_placeholders={"error": "Manager failed to start"},
+                )
+
+        except Exception as err:
+            _LOGGER.warning(
+                "Failed to initialize AWS SQS: %s - Using REST API polling only",
+                err,
+            )
+            self.sqs_manager = None
+            self._sqs_initialized = True  # unexpected error — don't retry in a loop
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                sqs_issue,
+                is_fixable=False,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="sqs_init_failed",
+                translation_placeholders={"error": str(err)},
+            )
+        finally:
+            self._sqs_init_in_progress = False

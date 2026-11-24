@@ -102,7 +102,7 @@ class AjaxOnvifMixin:
         API.
 
         Benefits:
-        * Works even when the alarm is DISARMED (legacy real-time do not).
+        * Works even when the alarm is DISARMED (SQS does not).
         * 100 % local; no cloud dependency for detections.
         * Real-time events via ONVIF PullPoint subscription.
 

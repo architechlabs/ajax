@@ -2,10 +2,16 @@
 
 This coordinator manages:
 - Periodic polling updates from the official Ajax REST API
+- Real-time event updates via the Ajax-provided AWS SQS queue (optional)
 - Space, Room, Device, and Notification data
 - State synchronization between Ajax and Home Assistant
 
-The hardened build intentionally uses REST polling only.
+The hardened build has no proxy / SSE relay: SQS is the only real-time path.
+
+Architecture:
+- Hybrid Mode: SQS real-time events + REST polling fallback
+- SQS events trigger immediate REST refresh for instant state updates
+- REST polling continues every 30s as baseline
 """
 
 from __future__ import annotations
@@ -20,13 +26,14 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.debounce import Debouncer
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from ._coordinator_arm import AjaxArmServiceMixin
 from ._coordinator_devices import AjaxDevicesMixin
 from ._coordinator_door_poll import AjaxDoorPollingMixin
 from ._coordinator_events import AjaxEventDispatchMixin
-from ._coordinator_init import AjaxBootstrapMixin
+from ._coordinator_init import SMART_LOCK_STORE_VERSION, AjaxBootstrapMixin
 from ._coordinator_onvif import AjaxOnvifMixin
 from ._coordinator_spaces import AjaxSpacesMixin
 from ._coordinator_state import AjaxStateUpdaterMixin
@@ -47,8 +54,14 @@ from .models import (
     SecurityState,
 )
 
+# Type imports for optional modules (for type checking only)
 if TYPE_CHECKING:
     from .onvif_manager import AjaxOnvifManager
+    from .sqs_manager import SQSManager
+
+# The optional-import guards (SQS_AVAILABLE / ONVIF_AVAILABLE)
+# live in their respective coordinator mixin modules now — the coordinator
+# itself only needs the typing-only imports above.
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -84,6 +97,9 @@ class AjaxDataCoordinator(
         hass: HomeAssistant,
         entry: AjaxConfigEntry,
         api: AjaxRestApi,
+        aws_access_key_id: str | None = None,
+        aws_secret_access_key: str | None = None,
+        queue_name: str | None = None,
         enabled_spaces: list[str] | None = None,
     ) -> None:
         """Initialize the coordinator.
@@ -92,6 +108,9 @@ class AjaxDataCoordinator(
             hass: Home Assistant instance
             entry: ConfigEntry this coordinator is bound to
             api: Ajax REST API instance
+            aws_access_key_id: AWS access key ID (optional, for SQS in direct mode)
+            aws_secret_access_key: AWS secret access key (optional, for SQS in direct mode)
+            queue_name: SQS queue name (optional, for SQS in direct mode)
             enabled_spaces: List of space IDs to enable (None = all spaces)
         """
         self.api = api
@@ -114,18 +133,30 @@ class AjaxDataCoordinator(
         # out-of-order. Without this, two automations firing arm() then
         # disarm() within ms can land in the wrong order on Ajax's side.
         self._arm_locks: dict[str, asyncio.Lock] = {}
-        # Cycle counter retained for forced/light-refresh scheduling.
+        # Cycle counter for adaptive polling — when SQS is delivering
+        # real-time events, video_edges and smart_locks state is already
+        # event-driven, so we only need a periodic REST sync (every Nth tick)
+        # rather than every cycle.
         self._cycle_counter: int = 0
-        self._realtime_skip_factor: int = 1
+        self._realtime_skip_factor: int = 3
 
         # Lightweight diagnostics counters: each handler increments the
         # matching key, diagnostics.py reads the whole dict. Plain ints so
         # no lock is needed (single-threaded asyncio).
         self.stats: dict[str, int] = {
+            "events_sqs_received": 0,
             "events_onvif_received": 0,
             "auth_errors": 0,
             "discovery_refreshes": 0,
         }
+
+        # SQS real-time events (optional, for direct mode)
+        self.sqs_manager: SQSManager | None = None
+        self._aws_access_key_id = aws_access_key_id
+        self._aws_secret_access_key = aws_secret_access_key
+        self._queue_name = queue_name
+        self._sqs_initialized = False
+        self._sqs_init_in_progress = False
 
         # ONVIF local AI detections (optional, for video edge cameras)
         self.onvif_manager: AjaxOnvifManager | None = None
@@ -153,16 +184,31 @@ class AjaxDataCoordinator(
         # Event entity registry: device_id -> AjaxEventEntity
         self._event_entities: dict[str, Any] = {}
 
+        # Hub IDs for which an SQS handler is mid-refresh and has already
+        # created the state-change event — keyed per hub so the REST poller
+        # only suppresses its duplicate for the affected hub, not every hub
+        # processed in the same tick.
+        self._skipped_state_change_hubs: set[str] = set()
+
+        # Flag to request a fresh (non-cached) refresh after an SQS event or user action
+        self._bypass_cache_next_refresh: bool = False
+
         # Set by async_force_state_refresh; the next _async_update_data run skips
         # the cycle counter and the video/smart-lock fan-out.
         self._light_refresh_pending: bool = False
 
-        # Wall-clock start of the last forced light refresh.
+        # Wall-clock start of the last forced light refresh; realtime managers
+        # use it to coalesce event bursts.
         self._last_forced_state_refresh_started: float = 0.0
 
         # Auth error resilience: tolerate transient auth failures before triggering reauth
         self._consecutive_auth_errors: int = 0
         self._max_auth_errors: int = 3  # Trigger reauth after 3 consecutive auth failures
+
+        # Persistent storage for SQS-discovered smart locks (survives reboots).
+        # Schema migration is handled manually in _async_load_smart_locks so we
+        # stay compatible with Store[Any] implementations that predate migrate_func.
+        self._smart_lock_store: Store[Any] = Store[Any](hass, SMART_LOCK_STORE_VERSION, f"{DOMAIN}_smart_locks")
 
         # Exposed as a plain str so entities can namespace their unique_id and
         # device identifiers per config entry (multi-account collision safety,
@@ -175,7 +221,9 @@ class AjaxDataCoordinator(
             config_entry=entry,
             name=DOMAIN,
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
-            # Debounce bursts of local HA actions into fewer API calls.
+            # Debouncer: Wait 0.5s of silence before triggering refresh
+            # Groups rapid multi-zone events into fewer API calls
+            # while keeping real-time updates fast enough
             request_refresh_debouncer=Debouncer(
                 hass,
                 _LOGGER,
@@ -187,8 +235,8 @@ class AjaxDataCoordinator(
     def _update_polling_interval(self, security_state: SecurityState) -> None:
         """Update polling interval based on security state.
 
-        - Armed/Night/Partial: 60s
-        - Disarmed: 30s
+        - Armed/Night/Partial: 60s (SQS handles real-time events)
+        - Disarmed: 30s (Ajax pushes no events while disarmed)
 
         Also manages door sensor fast polling (5s) when disarmed.
 
@@ -267,11 +315,11 @@ class AjaxDataCoordinator(
         await self.async_refresh()
 
     async def async_request_refresh_bypass_cache(self) -> None:
-        """Request an immediate refresh.
+        """Request a refresh that bypasses the local API cache.
 
-        Kept as a compatibility method for existing service/entity callers;
-        the direct-only transport has no intermediary cache.
+        Use this after SQS events or user actions to get fresh data.
         """
+        self._bypass_cache_next_refresh = True
         await self.async_request_refresh()
 
     async def _async_update_data(self) -> AjaxAccount:
@@ -285,6 +333,13 @@ class AjaxDataCoordinator(
             # Log when connection is restored after a failure
             if not self.last_update_success:
                 _LOGGER.info("Connection to Ajax API restored")
+
+            # Fresh data requested (after an SQS event or user action):
+            # skip the short-lived local API cache for this refresh.
+            if self._bypass_cache_next_refresh:
+                self.api.bypass_cache_next()
+                self._bypass_cache_next_refresh = False
+                _LOGGER.debug("Bypassing local API cache for this refresh")
 
             # Consume the light-refresh flag set by async_force_state_refresh:
             # this tick must not advance the cycle counter or trigger the
@@ -306,19 +361,24 @@ class AjaxDataCoordinator(
                 await self._async_update_spaces_from_hubs(full_refresh=True)
                 self._last_metadata_refresh = time.time()
 
-                # Load per-space data in parallel to minimize startup latency.
+                # Load devices, video edges, and notifications in parallel
                 tasks = []
                 for space_id in self.account.spaces:
                     tasks.append(self._async_update_devices(space_id))
                     tasks.append(self._async_update_video_edges(space_id))
                     tasks.append(self._async_update_smart_locks(space_id))
                     tasks.append(self._async_update_notifications(space_id, limit=20))
+                # return_exceptions so one failing space cannot leave the
+                # sibling coroutines running orphaned ("exception never
+                # retrieved"); the first failure is re-raised afterwards so
+                # the error handling below stays unchanged.
                 results = await asyncio.gather(*tasks, return_exceptions=True)
                 for result in results:
                     if isinstance(result, BaseException):
                         raise result
 
-                # Restore legacy real-time-discovered smart locks from storage
+                # Restore SQS-discovered smart locks from storage
+                await self._async_restore_smart_locks()
 
                 # Mark initial load as complete
                 self._initial_load_done = True
@@ -336,10 +396,29 @@ class AjaxDataCoordinator(
                         self._manage_door_sensor_polling(True, space.security_state)
                         break
 
-                # Initialize local ONVIF event handling only.
-                if self.config_entry is not None and not self._onvif_initialized:
+                # Initialize real-time events (Ajax-provided AWS SQS) in background
+                if self.config_entry is not None:
+                    entry = self.config_entry
+                    if not self._sqs_initialized and not self._sqs_init_in_progress and self._aws_access_key_id:
+                        # Direct mode: use SQS for real-time events
+                        entry.async_create_background_task(self.hass, self._async_init_sqs(), "ajax_init_sqs")
+
+                    # Initialize ONVIF for local AI detections (works even when disarmed)
+                    if not self._onvif_initialized:
+                        entry.async_create_background_task(self.hass, self._async_init_onvif(), "ajax_init_onvif")
+            else:
+                # Periodic update - optimized polling
+                # Retry real-time SQS if it never came up in direct mode — e.g.
+                # aiobotocore was still being installed during initial load. This
+                # self-heals without a manual restart once the dependency lands.
+                if (
+                    self.config_entry is not None
+                    and self._aws_access_key_id
+                    and not self._sqs_initialized
+                    and not self._sqs_init_in_progress
+                ):
                     self.config_entry.async_create_background_task(
-                        self.hass, self._async_init_onvif(), "ajax_init_onvif"
+                        self.hass, self._async_init_sqs(wait_for_dependency=False), "ajax_retry_sqs"
                     )
 
                 # Check if we need full metadata refresh (hourly or forced)
@@ -355,9 +434,45 @@ class AjaxDataCoordinator(
                 # Light or full update based on metadata refresh need
                 await self._async_update_spaces_from_hubs(full_refresh=need_metadata_refresh)
 
+                # A light refresh (async_force_state_refresh, after a realtime
+                # security event) must not advance the cadence used by the
+                # throttle below - otherwise a burst of events skews the
+                # "every Nth cycle" schedule for everyone, armed or not.
                 if not light_refresh:
                     self._cycle_counter += 1
-                refresh_video_smart = need_metadata_refresh or not light_refresh
+                # When real-time events are flowing in, video edges and smart
+                # locks are kept fresh by SQS. Throttle the REST sync so
+                # we only poll their full state every Nth cycle (or always on
+                # forced metadata refresh). Direct mode without realtime keeps
+                # the previous behaviour.
+                #
+                # SQS only delivers events while the alarm is armed
+                # (documented Ajax limitation — nothing is pushed while
+                # disarmed). A manager being instantiated is therefore not
+                # enough on its own: require at least one armed / partially
+                # armed / night-mode space before trusting realtime freshness.
+                # All spaces disarmed → REST becomes the only source again,
+                # so poll every cycle, same as the no-manager case.
+                any_space_armed = any(
+                    space.security_state
+                    in (
+                        SecurityState.ARMED,
+                        SecurityState.PARTIALLY_ARMED,
+                        SecurityState.NIGHT_MODE,
+                    )
+                    for space in self.account.spaces.values()
+                )
+                realtime_active = self.sqs_manager is not None and any_space_armed
+                # A light refresh never does the video/smart-lock fan-out on
+                # its own - not because of a phase-alignment fluke in the
+                # modulo above, and not because the space it just disarmed
+                # looks unarmed for this tick's realtime_active check. Only an
+                # explicit need_metadata_refresh (unrelated to this refresh
+                # being "light") still forces it.
+                refresh_video_smart = need_metadata_refresh or (
+                    not light_refresh
+                    and (not realtime_active or (self._cycle_counter % self._realtime_skip_factor == 0))
+                )
 
                 for space_id in self.account.spaces:
                     space_obj: AjaxSpace | None = self.account.spaces.get(space_id)
@@ -407,7 +522,7 @@ class AjaxDataCoordinator(
                 _LOGGER.warning("Connection to Ajax API lost: %s", err)
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
-    # Account/bootstrap state lives in
+    # Account / smart-lock store / SQS bootstrap live in
     # ``_coordinator_init.AjaxBootstrapMixin``.
 
     # ONVIF init + event handler + NVR routing live in
@@ -458,6 +573,14 @@ class AjaxDataCoordinator(
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator and cleanup resources."""
         _LOGGER.info("Shutting down Ajax coordinator")
+
+        # Stop SQS Manager (real-time events - direct mode)
+        if self.sqs_manager:
+            try:
+                _LOGGER.debug("Stopping AWS SQS Manager...")
+                await self.sqs_manager.stop()
+            except Exception as err:
+                _LOGGER.error("Error stopping SQS Manager: %s", err)
 
         # Stop ONVIF Manager (local AI detections)
         if self.onvif_manager:

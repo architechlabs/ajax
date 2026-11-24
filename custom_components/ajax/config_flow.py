@@ -36,10 +36,13 @@ from .const import (
     CONF_AJAX_USER_ID,
     CONF_API_KEY,
     CONF_AUTH_MODE,
+    CONF_AWS_ACCESS_KEY_ID,
+    CONF_AWS_SECRET_ACCESS_KEY,
     CONF_DISCOVERED_MACS,
     CONF_EMAIL,
     CONF_ENABLED_SPACES,
     CONF_PASSWORD,
+    CONF_QUEUE_NAME,
     CONF_REFRESH_TOKEN,
     CONF_TOTP_SECRET,
     DOMAIN,
@@ -272,6 +275,11 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                     elif totp_code:
                         self._entry_data.update(_session_data(self._api))
 
+                    # Add optional AWS SQS credentials (Ajax-provided queue) if given
+                    for key in (CONF_AWS_ACCESS_KEY_ID, CONF_AWS_SECRET_ACCESS_KEY, CONF_QUEUE_NAME):
+                        if user_input.get(key):
+                            self._entry_data[key] = user_input[key]
+
                     # If multiple spaces, let user select which to enable
                     if len(self._spaces) > 1:
                         return await self.async_step_select_spaces()
@@ -316,6 +324,10 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required(CONF_PASSWORD): str,
                 # Two-factor code or secret (optional) - only for accounts with 2FA enabled
                 vol.Optional(CONF_TOTP_SECRET): str,
+                # AWS SQS credentials (optional - for real-time events)
+                vol.Optional(CONF_AWS_ACCESS_KEY_ID): str,
+                vol.Optional(CONF_AWS_SECRET_ACCESS_KEY): str,
+                vol.Optional(CONF_QUEUE_NAME): str,
             }
         )
 

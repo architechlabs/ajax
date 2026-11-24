@@ -209,7 +209,7 @@ class AjaxEventEntity(CoordinatorEntity[AjaxDataCoordinator], EventEntity):
 
     @property
     def _dispatch_key(self) -> str:
-        """Key under which the legacy real-time managers look this entity up.
+        """Key under which the SQS manager look this entity up.
 
         Kept as the *bare* ``{device_id}_{event_key}`` (NOT the entry-prefixed
         unique_id): the dispatch map is per-coordinator, so it needs no
