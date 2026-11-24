@@ -28,8 +28,8 @@
   ],
   "quality_scale": "platinum",
   "requirements": [
-    "onvif-zeep-async>=4.2.1",
+    "onvif-zeep-async>=4.3.0",
     "pyotp>=2.10.0"
   ],
-  "version": "0.37.5"
+  "version": "0.39.4"
 }

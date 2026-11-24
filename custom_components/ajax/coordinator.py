@@ -47,7 +47,6 @@ from .models import (
     SecurityState,
 )
 
-
 if TYPE_CHECKING:
     from .onvif_manager import AjaxOnvifManager
 
@@ -106,6 +105,8 @@ class AjaxDataCoordinator(
             None  # Continuous door sensor polling when disarmed or in night mode
         )
         self._door_sensor_poll_security_state: SecurityState = SecurityState.DISARMED
+        # Monotonic deadline of the post-disarm door polling window (#285).
+        self._door_post_disarm_until: float = 0.0
         self._initial_load_done: bool = False  # Track if initial data load is complete
         self._force_metadata_refresh: bool = False  # Flag to force full metadata refresh
         self._pending_ha_actions: dict[str, float] = {}  # hub_id -> timestamp of HA action
@@ -152,7 +153,6 @@ class AjaxDataCoordinator(
         # Event entity registry: device_id -> AjaxEventEntity
         self._event_entities: dict[str, Any] = {}
 
-
         # Set by async_force_state_refresh; the next _async_update_data run skips
         # the cycle counter and the video/smart-lock fan-out.
         self._light_refresh_pending: bool = False
@@ -163,7 +163,6 @@ class AjaxDataCoordinator(
         # Auth error resilience: tolerate transient auth failures before triggering reauth
         self._consecutive_auth_errors: int = 0
         self._max_auth_errors: int = 3  # Trigger reauth after 3 consecutive auth failures
-
 
         # Exposed as a plain str so entities can namespace their unique_id and
         # device identifiers per config entry (multi-account collision safety,

@@ -54,4 +54,3 @@ class AjaxBootstrapMixin:
             self.account.name,
             self.account.user_id[:8],
         )
-

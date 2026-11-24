@@ -11,6 +11,86 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.39.4] - 2026-11-23
+
+### Fixed
+- **MAC addresses no longer appear in the integration's log lines (#285).** 0.39.2 masked them in exported files, but they stayed in clear in the debug log, through entity keys, RTSP paths and raw events. Every log line of the integration, and the tracebacks written with it, now shows a placeholder (`**MAC_1**`, `**MAC_2**`…) that stays the same for a given address until Home Assistant restarts. Only the log of this integration is covered, not lines written by Home Assistant or other libraries; device names and other identifiers are still shown. Logs written by an earlier version are not changed.
+
+## [0.39.3] - 2026-11-23
+
+### Fixed
+- **A door or wired input no longer flips back right after a realtime event (#285).** The REST data can keep the previous state for a while after an event (up to 23 seconds in a user's log), and polling wrote it over the newer state, showing a closed door as open or the reverse. This became much more visible with the post-disarm polling added in 0.39.1, but the regular refresh could do it too. Polled values are now ignored for a contact for 45 seconds after its last realtime event; contacts without a recent event are polled as before. If the next realtime event is lost, polling can take up to 45 seconds to notice.
+- The log now shows the real polling interval after a disarm (10 seconds, not 5).
+
+## [0.39.2] - 2026-11-23
+
+### Fixed
+- **MAC addresses no longer appear in exported data.** Only a fixed list of fields was redacted, so a MAC address embedded in another value, such as an NVR channel id, stayed in clear. The diagnostics and the raw data files written by the services (devices, NVR recordings, smart locks) now mask MAC addresses in any value, with a stable placeholder per address. Device names, other identifiers and debug logs are not masked: check them before sharing. Files exported with an earlier version are not changed.
+
+## [0.39.1] - 2026-11-20
+
+### Fixed
+- **Door contacts are read more often right after a disarm (#285).** Realtime events can be missing for a while after a disarm. The regular refresh already reads the contacts, but only every 30 seconds or more, so a brief opening could go unnoticed. For 10 minutes after each disarm, door contacts, transmitters and wired inputs are now polled every 10 seconds, in proxy mode too and whatever the *door sensor fast polling* option. An opening shorter than 10 seconds can still be missed. The window keeps the extra API calls bounded (about 60 per disarm).
+
+*Corrected on 2026-11-23: the original text said the contacts were not polled at all until now and that openings were no longer missed. Neither was accurate.*
+
+## [0.39.0] - 2026-11-18
+
+### Added
+- **Diagnostic sensor "ONVIF cameras connected" (#283).** Shows how many cameras currently deliver local ONVIF detections, with the expected total in its `total` attribute, so you can see at a glance (and alert on) a camera that stopped sending detections.
+
+### Fixed
+- **Detections come back after a camera outage without restarting Home Assistant (#283).** When a camera went down long enough for its ONVIF subscription to be lost, the attempt to recreate it failed and the integration then stopped retrying, silently, until the next restart. It now keeps retrying, logs a warning every 10 failed attempts while detections are not received, and logs when the subscription is restored.
+- **Faster ONVIF recovery (#283).** The delay between connection attempts to a camera is capped at 5 minutes instead of 30, and is skipped as soon as Ajax reports the camera online again.
+- Tests use 160-bit TOTP secrets, as pyotp 2.12 rejects shorter ones (no change for users).
+
+## [0.38.4] - 2026-10-23
+
+### Fixed
+- **A camera that refuses ONVIF no longer floods the log.** When a camera answered "Sender not Authorized" (or failed otherwise), it was retried on every 30-second refresh and each attempt was logged as an error — 81 lines in 40 minutes. Each camera now waits longer between attempts (1 minute, then 2, 4… up to 30 minutes), only the first failure is logged as an error, and its recovery is logged when it comes back.
+- **The ONVIF repair issues follow the real state.** "No camera connected" and "only X/Y cameras connected" were only checked at startup; they are now updated after every refresh, so they appear when a camera starts refusing and clear once it is back.
+
+## [0.38.3] - 2026-10-21
+
+### Changed
+- **Compatible with Home Assistant 2026.10.** The config flow, options and service schemas are aligned with the new typing introduced by Home Assistant 2026.10. No behaviour change.
+- `onvif-zeep-async` now requires 4.3.0 or newer.
+
+### Documentation
+- **Switching from proxy mode to direct mode (#247).** The README explains why the mode can't be changed in place, how to get the SQS credentials together with the API key, what survives the switch (entity IDs) and what doesn't (device IDs, manual renames and customisations), and the steps to follow.
+- The README now states that direct mode accepts the 6-digit two-factor code, not only the setup key.
+
+## [0.38.2] - 2026-09-28
+
+### Fixed
+- **The active power sensor now appears on WallSwitch (#254).** Those switches never sent `power` nor `powerConsumptionWatts` to Home Assistant — only the current, the voltage and the consumed energy — so the power sensor was never created, even though the current and the voltage were reported normally. The instantaneous power is now derived from the current and the voltage when the switch reports no power of its own. A power reading sent by the device is still used as-is, so existing sockets are unchanged.
+
+## [0.38.1] - 2026-09-25
+
+### Fixed
+- **A rejected login no longer locks your Ajax account (#250).** On an account with two-factor authentication, a login without a code is answered with *"Totp is required for account with enabled 2FA"* (HTTP 400). That answer was treated as temporary, so Home Assistant retried it over and over — each attempt one more failed sign-in — until Ajax started refusing the account with HTTP 423, even once a valid code or setup key was entered. A login rejected with 400 or 422 now stops immediately and asks you to re-authenticate; the "code missing" case gets its own message asking for the 6-digit code or the setup key.
+- The HTTP 423 message now explains that it can follow repeated failed attempts, and that waiting before retrying helps.
+
+### If your account is already locked (HTTP 423)
+Update, then disable the Ajax entry for a while so nothing keeps signing in, and re-authenticate **once** with the correct password and two-factor code or setup key (setup key only in proxy mode). If the refusal persists, contact Ajax support with the `messageId` shown in the log.
+
+## [0.38.0] - 2026-09-24
+
+### Fixed
+- **A real alarm no longer goes unnoticed by Home Assistant (#246).** A DoorProtect Plus tilt alarm (`TiltDetected`) was logged as "not handled" and dropped, even though Ajax marked it as an alarm: the siren sounded, the monitoring company was called, and the alarm panel in Home Assistant went straight from armed to disarmed. Tilt and shock events are now handled on both transports (SSE/proxy and SQS/direct): the tilt and shock binary sensors turn on — they were never updated before — and clear after 30 seconds, since Ajax sends no "restored" event, and the panel reaches `triggered` when Ajax classes the event as an alarm or the system is armed.
+- **Any alarm Ajax sends is honoured, even with a tag the integration does not know yet.** An unhandled event that Ajax itself classes as `ALARM` (in `eventTypeV2` or `eventType`) now triggers the panel as a generic alarm, with a history entry and the alarm notification, and is logged as an error instead of a warning. This relies on Ajax's own classification only: the event-code labels added in 0.37.0 still carry no alarm semantics.
+- **No more endless login retries.** When Ajax refused a login with HTTP 423 (undocumented, no reason given), Home Assistant retried it every few seconds, forever. It now stops and asks you to re-authenticate.
+- **Clearer API errors.** A rejected request now logs what Ajax replied (message, invalid fields, `messageId`) instead of `400, message=''`.
+- A throttled session refresh (HTTP 429) is treated as temporary instead of as an authentication failure.
+
+### Added
+- **The 6-digit two-factor code is enough.** Accounts with two-factor authentication can be set up (direct mode) with the code from the authenticator app — the setup key is no longer required. The session opened with that code is kept and renewed automatically; Home Assistant asks for a new code only when Ajax ends it. Proxy mode still needs the setup key.
+- **More ways to enter the setup key:** grouped with spaces or dashes, pasted with stray whitespace, as an `otpauth://` link, or as a Google Authenticator export link (`otpauth-migration://`).
+- **`ajax_unhandled_event` bus event.** Every real-time event the integration has no handler for is published on the event bus, so automations can react to new Ajax event types before they are supported.
+
+### Notes
+- Two-factor authentication is not required to use the integration: accounts without it keep signing in with email and password.
+
 ## [0.37.4] - 2026-08-31
 
 ### Fixed

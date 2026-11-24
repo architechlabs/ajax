@@ -28,7 +28,13 @@ def test_direct_build_api_does_not_accept_proxy_transport() -> None:
 
         _build_api(email="u@example.com", password="p", api_key="key")
         kwargs = api_cls.call_args.kwargs
-        assert kwargs == {"api_key": "key", "email": "u@example.com", "password": "p", "totp_secret": None}
+        assert kwargs == {
+            "api_key": "key",
+            "email": "u@example.com",
+            "password": "p",
+            "totp_secret": None,
+            "totp_code": None,
+        }
         assert "proxy_url" not in kwargs
         assert "proxy_mode" not in kwargs
 

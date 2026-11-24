@@ -134,11 +134,12 @@ def _apply_config_flags(device: AjaxDevice, device_data: dict[str, Any]) -> None
 def _apply_contact_states(device: AjaxDevice, device_data: dict[str, Any]) -> None:
     """Reed / extra contact / MultiTransmitter wiring-scheme door state."""
     # Door contact state (reedClosed -> door_opened)
-    if "reedClosed" in device_data:
+    # A recent realtime event wins over REST data, which may still be stale (#285).
+    if "reedClosed" in device_data and not device.is_optimistic("door_opened"):
         # reedClosed=True means door is closed, so door_opened=False
         device.attributes["door_opened"] = not device_data.get("reedClosed", True)
     # External contact state (extraContactClosed -> external_contact_opened)
-    if "extraContactClosed" in device_data:
+    if "extraContactClosed" in device_data and not device.is_optimistic("external_contact_opened"):
         device.attributes["external_contact_opened"] = not device_data.get("extraContactClosed", True)
     # Multitransmitter state (externalContactState -> door_opened)
     if "externalContactState" in device_data:
@@ -180,7 +181,8 @@ def _apply_contact_states(device: AjaxDevice, device_data: dict[str, Any]) -> No
             if contact_state and contact_state != "OK":
                 door_opened = True
 
-        device.attributes["door_opened"] = door_opened
+        if not device.is_optimistic("door_opened"):
+            device.attributes["door_opened"] = door_opened
 
     # Transmitter external contact triggered (boolean, separate from externalContactState)
     if "externalContactTriggered" in device_data:
@@ -368,6 +370,14 @@ def _apply_socket_power(device: AjaxDevice, device_data: dict[str, Any]) -> None
         device.attributes["current"] = (ma / 1000.0) if ma is not None else 0
     if "voltageVolts" in device_data:
         device.attributes["voltage"] = device_data.get("voltageVolts")
+    # WallSwitch reports neither powerConsumptionWatts nor power, only the
+    # current/voltage pair. Derive instantaneous power from them so the
+    # active power sensor is still instantiated (issue #254).
+    if "power" not in device.attributes:
+        voltage = device.attributes.get("voltage")
+        current = device.attributes.get("current")
+        if voltage is not None and current is not None:
+            device.attributes["power"] = round(voltage * current, 2)
     # Current threshold (SocketOutlet)
     if "currentThresholdAmpere" in device_data:
         device.attributes["current_threshold"] = device_data.get("currentThresholdAmpere")

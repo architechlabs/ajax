@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceEntry
 
 from . import AjaxConfigEntry
+from ._log_redaction import MAC_PATTERN, normalize_mac
 from ._raw_inventory import async_collect_raw_inventory
 from .const import CONF_AUTH_MODE, DOMAIN
 
@@ -114,6 +116,7 @@ TO_REDACT = {
     "password",
     "totp_secret",
     # Redact legacy keys as defense-in-depth for upgrades from older versions.
+    "ajax_user_id",
     "proxy_url",
     "aws_access_key_id",
     "aws_secret_access_key",
@@ -149,6 +152,60 @@ TO_REDACT = {
     "X-Session-Token",
     "Authorization",
 }
+
+
+# Field names alone are not enough: NVR channel ids embed the camera MAC
+# (``<token>-<MAC>-0``), so MAC addresses are also masked inside values (#282).
+_MAC_IN_TEXT = re.compile(MAC_PATTERN)
+_MAC_FIELDS = {"mac", "mac_address", "macaddress", "discovered_macs"}
+
+
+def _collect_macs(data: Any, found: set[str]) -> None:
+    """Collect the MACs held by MAC fields, to mask them wherever they reappear."""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            if str(key).lower() in _MAC_FIELDS:
+                for item in value if isinstance(value, (list, tuple, set)) else [value]:
+                    if isinstance(item, str) and _MAC_IN_TEXT.fullmatch(item):
+                        found.add(normalize_mac(item))
+            _collect_macs(value, found)
+    elif isinstance(data, (list, tuple, set)):
+        for item in data:
+            _collect_macs(item, found)
+
+
+def redact_ajax_data(data: Any) -> Any:
+    """Redact sensitive fields, and MAC addresses embedded in any other value.
+
+    Each MAC gets a stable ``**MAC_n**`` placeholder within one export, so that
+    entries sharing a camera can still be matched without exposing the address.
+    """
+    known: set[str] = set()
+    _collect_macs(data, known)
+    placeholders: dict[str, str] = {}
+
+    def placeholder(match: re.Match[str]) -> str:
+        return placeholders.setdefault(normalize_mac(match.group(0)), f"**MAC_{len(placeholders) + 1}**")
+
+    # Known MACs are matched even when glued to other hexadecimal characters.
+    known_pattern = (
+        re.compile("|".join("[:-]?".join(mac[i : i + 2] for i in range(0, 12, 2)) for mac in sorted(known)), re.I)
+        if known
+        else None
+    )
+
+    def mask(value: Any) -> Any:
+        if isinstance(value, str):
+            if known_pattern:
+                value = known_pattern.sub(placeholder, value)
+            return _MAC_IN_TEXT.sub(placeholder, value)
+        if isinstance(value, dict):
+            return {mask(key): mask(item) for key, item in value.items()}
+        if isinstance(value, (list, tuple, set)):
+            return [mask(item) for item in value]
+        return value
+
+    return mask(async_redact_data(data, TO_REDACT))
 
 
 async def get_ajax_raw_data(
@@ -237,7 +294,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: AjaxCon
     return {
         "config_entry_data": async_redact_data(entry.data, TO_REDACT),
         "diagnostics": _runtime_diagnostics(coordinator),
-        "ajax_data": async_redact_data(ajax_data, TO_REDACT),
+        "ajax_data": redact_ajax_data(ajax_data),
     }
 
 
@@ -262,5 +319,5 @@ async def async_get_device_diagnostics(
         "device_info": async_redact_data(device_info, TO_REDACT),
         "config_entry_data": async_redact_data(entry.data, TO_REDACT),
         "diagnostics": _runtime_diagnostics(coordinator),
-        "ajax_data": async_redact_data(ajax_data, TO_REDACT),
+        "ajax_data": redact_ajax_data(ajax_data),
     }

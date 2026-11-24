@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+from functools import partial
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import (
     area_registry as ar,
@@ -17,6 +18,7 @@ from homeassistant.helpers import (
 
 from ._device_parents import async_register_parent_devices
 from ._ids import find_device
+from ._log_redaction import install_log_filter
 from ._services import (  # noqa: F401  (SERVICE_* re-exported for tests/back-compat)
     SERVICE_FORCE_ARM,
     SERVICE_FORCE_ARM_NIGHT,
@@ -29,6 +31,7 @@ from ._services import (  # noqa: F401  (SERVICE_* re-exported for tests/back-co
 from .api import AjaxRestApi, AjaxRestApiError, AjaxRestAuthError
 from .const import (
     AUTH_MODE_DIRECT,
+    CONF_AJAX_USER_ID,
     CONF_API_KEY,
     CONF_AUTH_MODE,
     CONF_DISCOVERED_MACS,
@@ -36,6 +39,7 @@ from .const import (
     CONF_EMAIL,
     CONF_ENABLED_SPACES,
     CONF_PASSWORD,
+    CONF_REFRESH_TOKEN,
     CONF_RTSP_PASSWORD,
     CONF_RTSP_USERNAME,
     CONF_TOTP_SECRET,
@@ -50,6 +54,7 @@ if TYPE_CHECKING:
     from homeassistant.helpers.typing import ConfigType
 
 _LOGGER = logging.getLogger(__name__)
+install_log_filter(__name__, __path__)
 
 PLATFORMS: list[Platform] = [
     Platform.ALARM_CONTROL_PANEL,
@@ -108,8 +113,24 @@ async def async_setup_entry(hass: HomeAssistant, entry: AjaxConfigEntry) -> bool
         totp_secret=totp_secret,
     )
 
+    # Account with 2FA but no stored secret (the user only has the 6-digit
+    # code): the session lives on the refresh token obtained with that code.
+    # Resume it instead of logging in — a login would need a fresh code — and
+    # persist every rotation so the next restart can resume again.
+    stored_user_id = entry.data.get(CONF_AJAX_USER_ID)
+    stored_refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
+    resume_session = auth_mode == AUTH_MODE_DIRECT and not totp_secret
+    if resume_session and stored_user_id and stored_refresh_token:
+        api.on_tokens_updated = partial(_async_store_session, hass, entry)
+    else:
+        resume_session = False
+
     try:
-        await api.async_login()
+        if resume_session and stored_user_id and stored_refresh_token:
+            await api.async_resume_session(stored_user_id, stored_refresh_token)
+            _LOGGER.info("Resumed the stored Ajax session (two-factor code mode)")
+        else:
+            await api.async_login()
         await api.async_get_hubs()
         _LOGGER.info("Successfully connected to the official Ajax REST API")
     except AjaxRestAuthError as err:
@@ -170,6 +191,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: AjaxConfigEntry) -> bool
     return True
 
 
+@callback
+def _async_store_session(hass: HomeAssistant, entry: AjaxConfigEntry, user_id: str, refresh_token: str) -> None:
+    """Persist the rotating refresh token (two-factor code mode)."""
+    if entry.data.get(CONF_AJAX_USER_ID) == user_id and entry.data.get(CONF_REFRESH_TOKEN) == refresh_token:
+        return
+    hass.config_entries.async_update_entry(
+        entry,
+        data={**entry.data, CONF_AJAX_USER_ID: user_id, CONF_REFRESH_TOKEN: refresh_token},
+    )
+
+
+# Entry keys with no effect on the connection setup: changing them must not
+# reload the entry. The session keys rotate on every token refresh.
+_NON_RELOAD_KEYS = frozenset({CONF_DISCOVERED_MACS, CONF_AJAX_USER_ID, CONF_REFRESH_TOKEN})
+
+
 def _reload_relevant_config(entry: AjaxConfigEntry) -> tuple[dict[str, Any], str, str]:
     """Return the part of the entry config that requires a reload to apply.
 
@@ -179,12 +216,13 @@ def _reload_relevant_config(entry: AjaxConfigEntry) -> tuple[dict[str, Any], str
     tracks which DHCP-discovered hubs have been associated with this entry
     for deduplication in the config flow and has no runtime effect, so
     changing it (e.g. associating a newly discovered hub) must not trigger a
-    reload. In ``entry.options`` only the RTSP/ONVIF credentials need a
+    reload. The stored session (``CONF_AJAX_USER_ID``/``CONF_REFRESH_TOKEN``)
+    is excluded too: it rotates with every token refresh. In ``entry.options`` only the RTSP/ONVIF credentials need a
     reload — the ONVIF manager reads them at bootstrap only; everything
     else is either applied live (fast poll) or read dynamically
     (notification settings).
     """
-    data = {k: v for k, v in entry.data.items() if k != CONF_DISCOVERED_MACS}
+    data = {k: v for k, v in entry.data.items() if k not in _NON_RELOAD_KEYS}
     return (
         data,
         entry.options.get(CONF_RTSP_USERNAME, ""),

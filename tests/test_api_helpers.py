@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from custom_components.ajax.api import AjaxRestApi, AjaxRestApiError, RETRY_BACKOFF_BASE, RETRY_BACKOFF_MAX
+from custom_components.ajax.api import RETRY_BACKOFF_BASE, RETRY_BACKOFF_MAX, AjaxRestApi, AjaxRestApiError
 from custom_components.ajax.const import AJAX_REST_API_BASE_URL, AUTH_MODE_DIRECT
 
 
