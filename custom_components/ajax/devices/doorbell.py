@@ -35,7 +35,7 @@ class DoorbellHandler(AjaxDeviceHandler):
                 "key": "last_ring",
                 "translation_key": "last_ring",
                 "device_class": SensorDeviceClass.TIMESTAMP,
-                # ``last_ring`` is stored as an ISO string by the legacy real-time handlers;
+                # ``last_ring`` is stored as an ISO string by the SQS handlers;
                 # a TIMESTAMP sensor must return a ``datetime``, so parse it back.
                 "value_fn": lambda: (
                     dt_util.parse_datetime(self.device.attributes["last_ring"])

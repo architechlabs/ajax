@@ -27,7 +27,7 @@ class MotionDetectorHandler(AjaxDeviceHandler):
             {
                 "key": "motion",
                 "device_class": BinarySensorDeviceClass.MOTION,
-                # motion_detected is set by legacy real-time events in real-time
+                # motion_detected is set by SQS events in real-time
                 "value_fn": lambda: self.device.attributes.get("motion_detected", False),
                 "enabled_by_default": True,
                 "name": None,

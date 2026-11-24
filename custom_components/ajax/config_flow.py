@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from typing import Any
+import re
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.config_entries import (
@@ -15,6 +16,7 @@ from homeassistant.config_entries import (
 )
 from homeassistant.core import callback
 from homeassistant.helpers.selector import (
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -22,6 +24,7 @@ from homeassistant.helpers.selector import (
 from homeassistant.helpers.service_info.dhcp import DhcpServiceInfo
 
 from . import AjaxConfigEntry
+from ._totp_migration import MIGRATION_SCHEME, secret_from_migration_uri
 from .api import (
     AjaxRestApi,
     AjaxRestApiError,
@@ -30,15 +33,31 @@ from .api import (
 from .config_flow_options import AjaxOptionsFlow
 from .const import (
     AUTH_MODE_DIRECT,
+    CONF_AJAX_USER_ID,
     CONF_API_KEY,
     CONF_AUTH_MODE,
+    CONF_AWS_ACCESS_KEY_ID,
+    CONF_AWS_SECRET_ACCESS_KEY,
     CONF_DISCOVERED_MACS,
     CONF_EMAIL,
     CONF_ENABLED_SPACES,
     CONF_PASSWORD,
+    CONF_QUEUE_NAME,
+    CONF_REFRESH_TOKEN,
     CONF_TOTP_SECRET,
     DOMAIN,
 )
+
+if TYPE_CHECKING:
+    # Home Assistant 2026.10 (probatio) types the flow ``data_schema`` parameter
+    # as ``probatio.Schema``. At runtime Home Assistant aliases voluptuous to
+    # probatio (``install_as_voluptuous``), so ``vol.Schema`` already builds the
+    # very class HA expects; this alias only aligns the static type with HA's
+    # annotations. Importing probatio directly is not an option here: HA releases
+    # before 2026.10 do not ship it.
+    from probatio import Schema as _Schema
+else:
+    _Schema = vol.Schema
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +67,8 @@ _AUTH_ERROR_MAP = {
     "invalid_password": "invalid_password",
     "invalid_account_type": "invalid_account_type",
     "generic": "invalid_auth",
+    "totp_required": "totp_required",
+    "totp_missing": "totp_missing",
 }
 
 
@@ -57,6 +78,7 @@ def _build_api(
     password: str,
     api_key: str = "",
     totp_secret: str | None = None,
+    totp_code: str | None = None,
 ) -> AjaxRestApi:
     """Build the direct Enterprise Ajax REST client only.
 
@@ -68,7 +90,24 @@ def _build_api(
         email=email,
         password=password,
         totp_secret=totp_secret,
+        totp_code=totp_code,
     )
+
+
+_SESSION_KEYS = (CONF_AJAX_USER_ID, CONF_REFRESH_TOKEN)
+_TOTP_CODE_RE = re.compile(r"\d{6}")
+
+
+def _session_data(api: AjaxRestApi) -> dict[str, str]:
+    """Entry data that lets setup resume the session opened with a 2FA code."""
+    if api.user_id and api.refresh_token:
+        return {CONF_AJAX_USER_ID: api.user_id, CONF_REFRESH_TOKEN: api.refresh_token}
+    return {}
+
+
+def _without_session(data: Any) -> dict[str, Any]:
+    """Entry data minus the rotating session keys (they never trigger a reload)."""
+    return {k: v for k, v in data.items() if k not in _SESSION_KEYS}
 
 
 class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -95,10 +134,30 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def _clean_totp_secret(raw: str | None) -> str | None:
-        """Normalise a user-entered Base32 TOTP secret (spaces, case)."""
+        """Normalise a user-entered Base32 TOTP secret.
+
+        Accepts what people actually paste: the key grouped with spaces or
+        dashes, a non-breaking space or a trailing newline picked up by the
+        clipboard, ``=`` padding, lowercase, or the whole ``otpauth://`` link
+        read from the QR code. Only the space case used to pass. A Google
+        Authenticator export link (``otpauth-migration://``) is decoded too,
+        since that app never shows the key itself.
+        """
         if not raw:
             return None
-        secret = raw.replace(" ", "").upper()
+        text = raw.strip()
+        if text.lower().startswith(MIGRATION_SCHEME):
+            try:
+                text = secret_from_migration_uri(text)
+            except Exception as err:  # noqa: BLE001 - any malformed export
+                raise ValueError("invalid_totp_secret") from err
+        elif text.lower().startswith("otpauth://"):
+            from urllib.parse import parse_qs, urlsplit
+
+            text = parse_qs(urlsplit(text).query).get("secret", [""])[0]
+        secret = "".join(text.split()).replace("-", "").rstrip("=").upper()
+        if not secret:
+            raise ValueError("invalid_totp_secret")
         import pyotp
 
         try:
@@ -106,6 +165,21 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
         except Exception as err:
             raise ValueError("invalid_totp_secret") from err
         return secret
+
+    @classmethod
+    def _parse_totp_input(cls, raw: str | None) -> tuple[str | None, str | None]:
+        """Split the 2FA field into (secret, one-shot code).
+
+        Most users only have the 6-digit code their authenticator app shows,
+        not the setup key behind it. A code opens one session whose refresh
+        token (1-year TTL) is stored and rotated, so it is enough on its own
+        in direct mode; a secret lets the integration log in unattended.
+        Raises ``ValueError("invalid_totp_secret")`` for anything else.
+        """
+        compact = "".join((raw or "").split())
+        if _TOTP_CODE_RE.fullmatch(compact):
+            return None, compact
+        return cls._clean_totp_secret(raw), None
 
     def _add_discovered_mac_to_entry_data(self) -> None:
         """Add discovered MAC address to entry data if available."""
@@ -157,8 +231,9 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
             # Validated on its own, outside the network try/except below —
             # otherwise an unrelated ValueError from the login/hubs calls
             # would be misreported as an invalid TOTP secret.
+            totp_code: str | None = None
             try:
-                totp_secret = self._clean_totp_secret(user_input.get(CONF_TOTP_SECRET))
+                totp_secret, totp_code = self._parse_totp_input(user_input.get(CONF_TOTP_SECRET))
             except ValueError:
                 errors["base"] = "invalid_totp_secret"
                 totp_secret = None
@@ -171,6 +246,7 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                         password=user_input[CONF_PASSWORD],
                         api_key=user_input[CONF_API_KEY],
                         totp_secret=totp_secret,
+                        totp_code=totp_code,
                     )
 
                     # Test API connection by logging in
@@ -196,7 +272,13 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                     }
                     if totp_secret:
                         self._entry_data[CONF_TOTP_SECRET] = totp_secret
+                    elif totp_code:
+                        self._entry_data.update(_session_data(self._api))
 
+                    # Add optional AWS SQS credentials (Ajax-provided queue) if given
+                    for key in (CONF_AWS_ACCESS_KEY_ID, CONF_AWS_SECRET_ACCESS_KEY, CONF_QUEUE_NAME):
+                        if user_input.get(key):
+                            self._entry_data[key] = user_input[key]
 
                     # If multiple spaces, let user select which to enable
                     if len(self._spaces) > 1:
@@ -235,13 +317,17 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["base"] = "unknown"
 
         # Show configuration form for direct mode
-        data_schema = vol.Schema(
+        data_schema = _Schema(
             {
                 vol.Required(CONF_API_KEY): str,
                 vol.Required(CONF_EMAIL): str,
                 vol.Required(CONF_PASSWORD): str,
-                # Two-factor secret (optional) - Base32 key, mandatory on Ajax's side from 2025-09-01
+                # Two-factor code or secret (optional) - only for accounts with 2FA enabled
                 vol.Optional(CONF_TOTP_SECRET): str,
+                # AWS SQS credentials (optional - for real-time events)
+                vol.Optional(CONF_AWS_ACCESS_KEY_ID): str,
+                vol.Optional(CONF_AWS_SECRET_ACCESS_KEY): str,
+                vol.Optional(CONF_QUEUE_NAME): str,
             }
         )
 
@@ -278,7 +364,7 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
         # Select all by default
         default_spaces = [space["id"] for space in self._spaces]
 
-        data_schema = vol.Schema(
+        data_schema = _Schema(
             {
                 vol.Required(
                     CONF_ENABLED_SPACES,
@@ -354,7 +440,7 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
             options.append(SelectOptionDict(value=entry.entry_id, label=f"{email}"))
         options.append(SelectOptionDict(value="new", label="Create new configuration"))
 
-        data_schema = vol.Schema(
+        data_schema = _Schema(
             {
                 vol.Required("action"): SelectSelector(
                     # translation_key so the static "new" option is localised;
@@ -389,12 +475,12 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
             return self.async_abort(reason="reauth_failed")
 
         if user_input is not None:
-
             # Validated on its own, outside the network try/except below —
             # otherwise an unrelated ValueError from the login call would be
             # misreported as an invalid TOTP secret.
+            totp_code: str | None = None
             try:
-                new_totp_secret = self._clean_totp_secret(user_input.get(CONF_TOTP_SECRET))
+                new_totp_secret, totp_code = self._parse_totp_input(user_input.get(CONF_TOTP_SECRET))
             except ValueError:
                 errors["base"] = "invalid_totp_secret"
                 new_totp_secret = None
@@ -412,6 +498,7 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                         password=user_input[CONF_PASSWORD],
                         api_key=reauth_entry.data.get(CONF_API_KEY, ""),
                         totp_secret=totp_secret,
+                        totp_code=totp_code,
                     )
 
                     # Test login
@@ -424,6 +511,8 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                     data_updates: dict[str, Any] = {CONF_PASSWORD: password_hash}
                     if new_totp_secret:
                         data_updates[CONF_TOTP_SECRET] = new_totp_secret
+                    elif totp_code:
+                        data_updates.update(_session_data(self._api))
 
                     # Update + abort("reauth_successful"); the update listener
                     # schedules the reload (HA deprecates the flow-side reload
@@ -434,8 +523,13 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
                     # could be registered, e.g. a previous
                     # ConfigEntryAuthFailed) — there is no listener to rely
                     # on, so the flow must reschedule the setup.
+                    # The session keys are ignored by the listener's reload
+                    # snapshot, so they must not count as a change here.
                     new_data = {**reauth_entry.data, **data_updates}
-                    if new_data == dict(reauth_entry.data) or reauth_entry.state is not ConfigEntryState.LOADED:
+                    if (
+                        _without_session(new_data) == _without_session(reauth_entry.data)
+                        or reauth_entry.state is not ConfigEntryState.LOADED
+                    ):
                         self.hass.config_entries.async_schedule_reload(reauth_entry.entry_id)
                     return self.async_update_and_abort(
                         reauth_entry,
@@ -461,7 +555,7 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
         # Show password re-entry form
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=vol.Schema(
+            data_schema=_Schema(
                 {
                     vol.Required(CONF_PASSWORD): str,
                     # Two-factor secret (optional) - leave blank to keep the
@@ -481,56 +575,88 @@ class AjaxConfigFlow(ConfigFlow, domain=DOMAIN):
         reconfigure_entry = self._get_reconfigure_entry()
 
         if user_input is not None:
+            # Validated on its own, outside the network try/except below —
+            # otherwise an unrelated ValueError from the login call would be
+            # misreported as an invalid TOTP secret.
+            totp_code: str | None = None
             try:
-                await self.async_set_unique_id(user_input[CONF_EMAIL].lower())
-                self._abort_if_unique_id_mismatch(reason="wrong_account")
-                totp_secret = self._clean_totp_secret(user_input.get(CONF_TOTP_SECRET))
-                self._api = _build_api(
-                    email=user_input[CONF_EMAIL],
-                    password=user_input[CONF_PASSWORD],
-                    api_key=user_input[CONF_API_KEY],
-                    totp_secret=totp_secret,
-                )
-                await self._api.async_login()
-                await self._api.close()
-
-                password_hash = hashlib.sha256(user_input[CONF_PASSWORD].encode()).hexdigest()
-                new_data = {
-                    **reconfigure_entry.data,
-                    CONF_AUTH_MODE: AUTH_MODE_DIRECT,
-                    CONF_API_KEY: user_input[CONF_API_KEY],
-                    CONF_EMAIL: user_input[CONF_EMAIL],
-                    CONF_PASSWORD: password_hash,
-                }
-                if totp_secret:
-                    new_data[CONF_TOTP_SECRET] = totp_secret
-                else:
-                    new_data.pop(CONF_TOTP_SECRET, None)
-
-                self.hass.config_entries.async_update_entry(reconfigure_entry, data=new_data)
-                return self.async_abort(reason="reconfigure_successful")
+                new_totp_secret, totp_code = self._parse_totp_input(user_input.get(CONF_TOTP_SECRET))
             except ValueError:
                 errors["base"] = "invalid_totp_secret"
-            except AjaxRestAuthError:
-                errors["base"] = "invalid_auth"
-            except AjaxRestApiError:
-                errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected error during Ajax reconfiguration")
-                errors["base"] = "unknown"
-            finally:
-                if self._api:
+                new_totp_secret = None
+
+            if not errors:
+                # Reconfigure must stay on the same Ajax account: device
+                # unique_ids are namespaced by config entry and tied to the
+                # Ajax ids of the account this entry was originally set up
+                # with. Checked before any network call so a refused account
+                # switch never even attempts to log in.
+                await self.async_set_unique_id(user_input[CONF_EMAIL].lower())
+                self._abort_if_unique_id_mismatch(reason="wrong_account")
+
+                # Keep the stored secret when none was entered (or only a
+                # one-shot code was entered).
+                totp_secret = new_totp_secret or (None if totp_code else reconfigure_entry.data.get(CONF_TOTP_SECRET))
+                try:
+                    self._api = _build_api(
+                        email=user_input[CONF_EMAIL],
+                        password=user_input[CONF_PASSWORD],
+                        api_key=user_input[CONF_API_KEY],
+                        totp_secret=totp_secret,
+                        totp_code=totp_code,
+                    )
+                    await self._api.async_login()
                     await self._api.close()
+
+                    password_hash = hashlib.sha256(user_input[CONF_PASSWORD].encode()).hexdigest()
+                    new_data = {
+                        **reconfigure_entry.data,
+                        CONF_AUTH_MODE: AUTH_MODE_DIRECT,
+                        CONF_API_KEY: user_input[CONF_API_KEY],
+                        CONF_EMAIL: user_input[CONF_EMAIL],
+                        CONF_PASSWORD: password_hash,
+                    }
+                    if new_totp_secret:
+                        new_data[CONF_TOTP_SECRET] = new_totp_secret
+                    elif totp_code:
+                        new_data.pop(CONF_TOTP_SECRET, None)
+                        new_data.update(_session_data(self._api))
+
+                    # The update listener schedules the reload on data change;
+                    # identical resubmission (or an entry that is not loaded)
+                    # retries the setup explicitly.
+                    if (
+                        _without_session(new_data) == _without_session(reconfigure_entry.data)
+                        or reconfigure_entry.state is not ConfigEntryState.LOADED
+                    ):
+                        self.hass.config_entries.async_schedule_reload(reconfigure_entry.entry_id)
+                    return self.async_update_and_abort(reconfigure_entry, data_updates=new_data)
+                except AjaxRestAuthError as err:
+                    _LOGGER.error("Reconfigure failed: %s", err)
+                    errors["base"] = _AUTH_ERROR_MAP.get(getattr(err, "error_type", None), "invalid_auth")
+                except AjaxRestApiError as err:
+                    _LOGGER.error("Reconfigure failed: %s", err)
+                    errors["base"] = "cannot_connect"
+                except Exception:
+                    _LOGGER.exception("Unexpected error during Ajax reconfiguration")
+                    errors["base"] = "unknown"
+                finally:
+                    if self._api:
+                        await self._api.close()
+
+        data_schema = _Schema(
+            {
+                vol.Required(CONF_API_KEY, default=reconfigure_entry.data.get(CONF_API_KEY, "")): str,
+                vol.Required(CONF_EMAIL, default=reconfigure_entry.data.get(CONF_EMAIL, "")): str,
+                vol.Required(CONF_PASSWORD): str,
+                # Two-factor secret or 6-digit code (optional) - leave blank to
+                # keep the secret already stored on this entry.
+                vol.Optional(CONF_TOTP_SECRET): str,
+            }
+        )
 
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_API_KEY, default=reconfigure_entry.data.get(CONF_API_KEY, "")): str,
-                    vol.Required(CONF_EMAIL, default=reconfigure_entry.data.get(CONF_EMAIL, "")): str,
-                    vol.Required(CONF_PASSWORD): str,
-                    vol.Optional(CONF_TOTP_SECRET): str,
-                }
-            ),
+            data_schema=data_schema,
             errors=errors,
         )

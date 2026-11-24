@@ -1,7 +1,7 @@
 """Door-sensor fast-polling mixin for ``AjaxDataCoordinator``.
 
 When the system is disarmed (or in night mode for sensors excluded from it),
-Ajax pushes no legacy real-time events, so door / transmitter / wire-input contacts are
+Ajax pushes no SQS events, so door / transmitter / wire-input contacts are
 polled on a fast 5 s loop for responsive UX. This subsystem is a self-contained
 mixin so the main coordinator file stays focused on the core update pipeline.
 
@@ -14,10 +14,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from .api import AjaxRestApiError, AjaxRestAuthError
-from .const import UPDATE_INTERVAL_DOOR_SENSORS
+from .const import POST_DISARM_POLL_INTERVAL, POST_DISARM_POLL_SECONDS, UPDATE_INTERVAL_DOOR_SENSORS
 from .models import DeviceType, SecurityState
 
 if TYPE_CHECKING:
@@ -50,6 +51,8 @@ class AjaxDoorPollingMixin:
         _door_sensor_poll_task: asyncio.Task[Any] | None
         _door_sensor_poll_security_state: SecurityState
         _door_sensor_fast_poll_enabled: bool
+        _door_post_disarm_until: float
+        _initial_load_done: bool
 
         def async_set_updated_data(self, data: AjaxAccount) -> None: ...
         def _normalize_device_attributes(
@@ -104,8 +107,25 @@ class AjaxDoorPollingMixin:
                 for space in self.account.spaces.values()
             )
 
-        # Check if fast polling is enabled (can be disabled to reduce API calls)
-        if not self._door_sensor_fast_poll_enabled:
+        # Realtime events can be missing for a while right after a disarm, even
+        # though the devices keep reporting (#285). Poll the contacts for a
+        # bounded window then, whatever the fast-polling option or mode.
+        now = time.monotonic()
+        if (
+            security_state == SecurityState.DISARMED
+            and self._door_sensor_poll_security_state != SecurityState.DISARMED
+            and getattr(self, "_initial_load_done", False)
+        ):
+            self._door_post_disarm_until = now + POST_DISARM_POLL_SECONDS
+            _LOGGER.info(
+                "Disarmed: polling door contacts every %ds for %d min",
+                POST_DISARM_POLL_INTERVAL,
+                POST_DISARM_POLL_SECONDS // 60,
+            )
+
+        # Fast polling is an option (it costs API calls); when it is off, only
+        # the post-disarm window applies.
+        if not self._fast_door_polling_allowed() and now >= getattr(self, "_door_post_disarm_until", 0.0):
             should_poll = False
 
         # Store[Any] security state for the polling loop
@@ -117,8 +137,8 @@ class AjaxDoorPollingMixin:
                 self.hass, self._async_poll_door_sensors_loop(), "ajax_door_sensor_poll"
             )
             _LOGGER.info(
-                "Started door sensor fast polling (every %ds, state: %s)",
-                UPDATE_INTERVAL_DOOR_SENSORS,
+                "Started door sensor polling (every %ds, state: %s)",
+                UPDATE_INTERVAL_DOOR_SENSORS if self._fast_door_polling_allowed() else POST_DISARM_POLL_INTERVAL,
                 security_state.value,
             )
         elif not should_poll and self._door_sensor_poll_task is not None:
@@ -126,6 +146,10 @@ class AjaxDoorPollingMixin:
             self._door_sensor_poll_task.cancel()
             self._door_sensor_poll_task = None
             _LOGGER.info("Stopped door sensor fast polling (system armed)")
+
+    def _fast_door_polling_allowed(self) -> bool:
+        """Whether the continuous 5 s door polling may run (option on)."""
+        return self._door_sensor_fast_poll_enabled
 
     async def _async_poll_door_sensors_loop(self) -> None:
         """Continuous polling loop for door sensors.
@@ -136,7 +160,14 @@ class AjaxDoorPollingMixin:
         """
         try:
             while True:
-                await asyncio.sleep(UPDATE_INTERVAL_DOOR_SENSORS)
+                fast = self._fast_door_polling_allowed()
+                await asyncio.sleep(UPDATE_INTERVAL_DOOR_SENSORS if fast else POST_DISARM_POLL_INTERVAL)
+                window_end = getattr(self, "_door_post_disarm_until", 0.0)
+                if not fast and 0.0 < window_end <= time.monotonic():
+                    # The post-disarm window is over and continuous polling is off.
+                    self._door_sensor_poll_task = None
+                    _LOGGER.debug("Post-disarm door polling window over")
+                    return
 
                 if not self.account:
                     continue
@@ -240,7 +271,7 @@ class AjaxDoorPollingMixin:
                                         normalized_attrs = self._normalize_device_attributes(api_attrs, device.type)
                                         new_door_state = bool(normalized_attrs.get("door_opened", old_door_state))
 
-                                    if old_door_state != new_door_state:
+                                    if old_door_state != new_door_state and not device.is_optimistic("door_opened"):
                                         device.attributes["door_opened"] = new_door_state
                                         _LOGGER.debug(
                                             "Door sensor %s state changed: %s -> %s",
@@ -276,7 +307,7 @@ class AjaxDoorPollingMixin:
                                             external_state, wiring_details
                                         )
 
-                                        if old_door_state != new_door_state:
+                                        if old_door_state != new_door_state and not device.is_optimistic("door_opened"):
                                             device.attributes["door_opened"] = new_door_state
                                             _LOGGER.debug(
                                                 "WireInput %s state changed: %s -> %s",

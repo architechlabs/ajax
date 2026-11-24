@@ -25,6 +25,7 @@ if TYPE_CHECKING:
 
     from .api import AjaxRestApi
     from .models import AjaxAccount
+    from .sqs_manager import SQSManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -38,8 +39,10 @@ class AjaxSpacesMixin:
         api: AjaxRestApi
         hass: HomeAssistant
         all_discovered_spaces: dict[str, str]
+        sqs_manager: SQSManager | None
         _enabled_spaces: list[str] | None
         _space_binding_cache: dict[str, dict[str, Any]]
+        _skipped_state_change_hubs: set[str]
         _initial_load_done: bool
 
         def _parse_security_state(self, value: Any) -> SecurityState: ...
@@ -271,7 +274,7 @@ class AjaxSpacesMixin:
             # Fetch groups on every tick when group mode is enabled.
             #
             # The per-group arm state lives ONLY on the /groups endpoint. We
-            # used to skip this fetch on light (state-only) ticks while legacy real-time
+            # used to skip this fetch on light (state-only) ticks while SQS
             # was active, trusting the real-time group arm/disarm events to
             # force a full metadata refresh. That assumption is unsafe (#150):
             #   - two group transitions inside the SSE 5 s dedup window (or a
@@ -351,15 +354,19 @@ class AjaxSpacesMixin:
                 except AjaxRestApiError as err:
                     _LOGGER.warning("Failed to get groups for hub %s: %s", hub_id, err)
 
+            # Check if SQS recently updated this hub's state
+            # If so, don't overwrite with potentially stale REST data
             old_state = space.security_state
             if old_state != security_state:
+                # Check real-time event protection (don't overwrite recent updates)
+                sqs_protected = self.sqs_manager and self.sqs_manager.is_state_protected(hub_id)
                 # Protect optimistic updates from a user-triggered arm/disarm just
                 # like the group-level path does — otherwise a stale REST poll
                 # landing within the 10 s window can revert a HA disarm/arm.
                 ha_protected = self.has_pending_ha_action(hub_id)
-                if ha_protected:
+                if sqs_protected or ha_protected:
                     _LOGGER.debug(
-                        "Hub %s: REST has %s but a recent Home Assistant action set %s (protected)",
+                        "Hub %s: REST has %s but a recent real-time event or HA action set %s (protected)",
                         hub_id,
                         security_state.value,
                         old_state.value,
@@ -376,5 +383,9 @@ class AjaxSpacesMixin:
                     # Update polling interval based on new state
                     self._update_polling_interval(security_state)
 
-                    # REST polling is the only Ajax cloud state source in this build.
-                    self._create_event_from_state_change(space, old_state, security_state)
+                    # Create event from state change (skip only for the hub
+                    # whose SQS handler already created the event).
+                    if hub_id in self._skipped_state_change_hubs:
+                        _LOGGER.debug("Skipping state change event for %s (SQS already created it)", hub_id)
+                    else:
+                        self._create_event_from_state_change(space, old_state, security_state)

@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import ipaddress
 import logging
 import os
-import ipaddress
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -40,6 +40,8 @@ DEFAULT_ONVIF_PORT = 8080
 SUBSCRIPTION_TIME = timedelta(minutes=10)
 PULLPOINT_POLL_INTERVAL = 0.5  # Short delay between polls (long poll handles waiting)
 PULLPOINT_MAX_BACKOFF = 60  # Max backoff delay in seconds on errors
+# While a subscription stays down, warn every this many attempts (~10 min at max backoff).
+RESUBSCRIBE_WARNING_EVERY = 10
 
 
 @dataclass
@@ -86,6 +88,8 @@ class AjaxOnvifClient:
         self._poll_task: asyncio.Task[Any] | None = None
         # Flag set by _on_subscription_lost so _poll_loop reacts immediately.
         self._subscription_lost = False
+        # Consecutive failed re-subscriptions, for the periodic warning.
+        self._resubscribe_failures = 0
         self._last_states: dict[str, bool] = {}  # Cache to filter duplicate events
 
     @property
@@ -93,7 +97,7 @@ class AjaxOnvifClient:
         """Return True if connected to the camera."""
         return self._camera is not None and self._pullpoint_manager is not None
 
-    async def async_connect(self) -> bool:
+    async def async_connect(self, log_errors: bool = True) -> bool:
         """Connect to the camera via ONVIF.
 
         Returns:
@@ -139,7 +143,8 @@ class AjaxOnvifClient:
             return True
 
         except (ONVIFError, Fault, TimeoutError, OSError, ValueError) as err:
-            _LOGGER.error(
+            _LOGGER.log(
+                logging.ERROR if log_errors else logging.DEBUG,
                 "ONVIF: Failed to connect to %s at %s:%s - %s: %s",
                 self.video_edge.name,
                 self.video_edge.ip_address,
@@ -150,7 +155,7 @@ class AjaxOnvifClient:
             self._camera = None
             return False
 
-    async def async_subscribe_events(self) -> bool:
+    async def async_subscribe_events(self, log_errors: bool = True) -> bool:
         """Subscribe to ONVIF events via PullPoint Manager.
 
         Returns:
@@ -191,7 +196,8 @@ class AjaxOnvifClient:
             return True
 
         except (ONVIFError, Fault, TimeoutError, OSError) as err:
-            _LOGGER.error(
+            _LOGGER.log(
+                logging.ERROR if log_errors else logging.DEBUG,
                 "ONVIF: Failed to create PullPoint subscription for %s - %s: %s",
                 self.video_edge.name,
                 type(err).__name__,
@@ -260,8 +266,10 @@ class AjaxOnvifClient:
             try:
                 # Auto-reconnect if subscription was lost (either flag-set by
                 # the manager callback, or detected via closed state).
-                needs_recreate = self._subscription_lost or (
-                    self._pullpoint_manager is not None and self._pullpoint_manager.closed
+                # A failed re-subscribe leaves no manager at all: keep retrying
+                # instead of polling nothing until Home Assistant restarts.
+                needs_recreate = (
+                    self._subscription_lost or self._pullpoint_manager is None or self._pullpoint_manager.closed
                 )
                 if needs_recreate:
                     _LOGGER.info(
@@ -269,10 +277,26 @@ class AjaxOnvifClient:
                         self.video_edge.name,
                     )
                     self._subscription_lost = False
-                    if not await self.async_subscribe_events():
+                    # Only the first failure of a series is logged as an error.
+                    first_failure = backoff == PULLPOINT_POLL_INTERVAL
+                    if not await self.async_subscribe_events(log_errors=first_failure):
+                        self._resubscribe_failures += 1
+                        if self._resubscribe_failures % RESUBSCRIBE_WARNING_EVERY == 0:
+                            _LOGGER.warning(
+                                "%s: ONVIF subscription still down after %d attempts, detections are not received",
+                                self.video_edge.name,
+                                self._resubscribe_failures,
+                            )
                         backoff = min(backoff * 2, PULLPOINT_MAX_BACKOFF)
                         await asyncio.sleep(backoff)
                         continue
+                    if self._resubscribe_failures:
+                        _LOGGER.warning(
+                            "%s: ONVIF subscription restored after %d failed attempt(s)",
+                            self.video_edge.name,
+                            self._resubscribe_failures,
+                        )
+                        self._resubscribe_failures = 0
 
                 await self._pull_messages()
                 backoff = PULLPOINT_POLL_INTERVAL  # Reset on success

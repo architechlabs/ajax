@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
 from homeassistant.components.persistent_notification import async_create
@@ -35,6 +35,17 @@ from .const import (
     AjaxConfigEntry,
 )
 from .coordinator import AjaxDataCoordinator
+
+if TYPE_CHECKING:
+    # Home Assistant 2026.10 (probatio) types the flow ``data_schema`` parameter
+    # as ``probatio.Schema``. At runtime Home Assistant aliases voluptuous to
+    # probatio (``install_as_voluptuous``), so ``vol.Schema`` already builds the
+    # very class HA expects; this alias only aligns the static type with HA's
+    # annotations. Importing probatio directly is not an option here: HA releases
+    # before 2026.10 do not ship it.
+    from probatio import Schema as _Schema
+else:
+    _Schema = vol.Schema
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -224,16 +235,10 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
 
         # Write to file (include devices, cameras, and video edges).
         # Redact sensitive fields before writing so the file is safe to share.
-        from homeassistant.components.diagnostics import async_redact_data
-
-        from .diagnostics import TO_REDACT
+        from .diagnostics import redact_ajax_data
 
         output_path = Path(hass.config.path("ajax_raw_devices.json"))
-        output_data = {
-            "devices": async_redact_data(all_devices, TO_REDACT),
-            "cameras": async_redact_data(all_cameras, TO_REDACT),
-            "video_edges": async_redact_data(all_video_edges, TO_REDACT),
-        }
+        output_data = redact_ajax_data({"devices": all_devices, "cameras": all_cameras, "video_edges": all_video_edges})
 
         def write_json() -> None:
             with open(output_path, "w", encoding="utf-8") as f:
@@ -281,7 +286,7 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
             DOMAIN,
             SERVICE_FORCE_ARM,
             handle_force_arm,
-            schema=vol.Schema({vol.Optional("entity_id"): cv.entity_ids}),
+            schema=_Schema({vol.Optional("entity_id"): cv.entity_ids}),
         )
 
     if not hass.services.has_service(DOMAIN, SERVICE_FORCE_ARM_NIGHT):
@@ -289,7 +294,7 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
             DOMAIN,
             SERVICE_FORCE_ARM_NIGHT,
             handle_force_arm_night,
-            schema=vol.Schema({vol.Optional("entity_id"): cv.entity_ids}),
+            schema=_Schema({vol.Optional("entity_id"): cv.entity_ids}),
         )
 
     if not hass.services.has_service(DOMAIN, SERVICE_GET_RAW_DEVICES):
@@ -394,12 +399,10 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
 
         # Write to file.
         # Redact sensitive fields before writing so the file is safe to share.
-        from homeassistant.components.diagnostics import async_redact_data
-
-        from .diagnostics import TO_REDACT
+        from .diagnostics import redact_ajax_data
 
         output_path = Path(hass.config.path("ajax_nvr_recordings.json"))
-        redacted_nvr_data = async_redact_data(nvr_data, TO_REDACT)
+        redacted_nvr_data = redact_ajax_data(nvr_data)
 
         def write_json() -> None:
             with open(output_path, "w", encoding="utf-8") as f:
@@ -471,15 +474,38 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
                         err,
                     )
 
+                # Also include SQS-discovered locks (not in API)
+                for sl_id, smart_lock in space.smart_locks.items():
+                    # Check if already in API data
+                    if any(sl.get("id") == sl_id for sl in smart_locks_data):
+                        continue
+                    # This is an SQS-discovered lock ("_source" value kept
+                    # from upstream so exported files stay comparable)
+                    smart_locks_data.append(
+                        {
+                            "id": sl_id,
+                            "name": smart_lock.name,
+                            "type": "SMART_LOCK",
+                            "_source": "sse_sqs_discovered",
+                            "_space_name": space.name,
+                            "_space_id": _space_id,
+                            "_is_locked": smart_lock.is_locked,
+                            "_is_door_open": smart_lock.is_door_open,
+                            "_last_event_tag": smart_lock.last_event_tag,
+                            "_last_event_time": smart_lock.last_event_time.isoformat()
+                            if smart_lock.last_event_time
+                            else None,
+                            "_last_changed_by": smart_lock.last_changed_by,
+                            "_raw_data": smart_lock.raw_data,
+                        }
+                    )
 
         # Write to file.
         # Redact sensitive fields before writing so the file is safe to share.
-        from homeassistant.components.diagnostics import async_redact_data
-
-        from .diagnostics import TO_REDACT
+        from .diagnostics import redact_ajax_data
 
         output_path = Path(hass.config.path("ajax_smart_locks.json"))
-        redacted_smart_locks = async_redact_data(smart_locks_data, TO_REDACT)
+        redacted_smart_locks = redact_ajax_data(smart_locks_data)
 
         def write_json() -> None:
             with open(output_path, "w", encoding="utf-8") as f:
@@ -487,11 +513,14 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
 
         await hass.async_add_executor_job(write_json)
 
-        api_count = len(smart_locks_data)
+        # Count by source
+        api_count = sum(1 for sl in smart_locks_data if sl.get("_source") == "api")
+        sqs_count = sum(1 for sl in smart_locks_data if sl.get("_source") == "sse_sqs_discovered")
 
         message = (
             f"**Smart locks found:** {len(smart_locks_data)}\n"
-            f"- From official Ajax REST API: {api_count}\n\n"
+            f"- From official Ajax REST API: {api_count}\n"
+            f"- From SQS events: {sqs_count}\n\n"
             f"Saved to: {output_path}\n\n"
             "Check the JSON file for full details including all API fields."
         )
@@ -504,9 +533,10 @@ async def _async_setup_services(hass: HomeAssistant) -> None:
         )
 
         _LOGGER.info(
-            "Smart locks data written to %s (%d from official Ajax REST API)",
+            "Smart locks data written to %s (%d from official Ajax REST API, %d from SQS)",
             output_path,
             api_count,
+            sqs_count,
         )
 
     if not hass.services.has_service(DOMAIN, SERVICE_GET_SMART_LOCKS):

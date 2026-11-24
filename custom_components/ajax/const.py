@@ -43,13 +43,24 @@ MANUFACTURER = "Ajax Systems"
 CONF_API_KEY = "api_key"
 CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
-CONF_TOTP_SECRET = "totp_secret"  # Optional Base32 TOTP secret (2FA, mandatory 2025-09-01)
+CONF_TOTP_SECRET = "totp_secret"  # Optional Base32 TOTP secret (accounts with 2FA enabled)
+# Session kept alive without a TOTP secret: when the user only has the
+# 6-digit code, one login with it yields a refresh token (1-year TTL) that is
+# stored here and rotated on every refresh, so restarts resume the session
+# instead of logging in again (which would need a fresh code).
+CONF_REFRESH_TOKEN = "refresh_token"
+CONF_AJAX_USER_ID = "ajax_user_id"
 CONF_NOTIFICATION_FILTER = "notification_filter"
 CONF_PERSISTENT_NOTIFICATION = "persistent_notification"
 CONF_MONITORED_SPACES = "monitored_spaces"
 CONF_ENABLED_SPACES = "enabled_spaces"  # Which spaces to load (filter devices/entities)
 
-# Direct API authentication. The hardened build intentionally has no proxy/AWS/SSE configuration.
+# AWS SQS configuration (optional - Ajax-provided queue for real-time events)
+CONF_AWS_ACCESS_KEY_ID = "aws_access_key_id"
+CONF_AWS_SECRET_ACCESS_KEY = "aws_secret_access_key"
+CONF_QUEUE_NAME = "queue_name"
+
+# Direct API authentication. The hardened build intentionally has no proxy/SSE configuration.
 CONF_AUTH_MODE = "auth_mode"
 AUTH_MODE_DIRECT = "direct"
 
@@ -75,8 +86,16 @@ AJAX_REST_API_TIMEOUT = 30  # seconds
 
 # Update intervals (seconds)
 UPDATE_INTERVAL = 30  # Default poll interval when disarmed (need faster updates)
-UPDATE_INTERVAL_ARMED = 60  # Poll interval when armed
+UPDATE_INTERVAL_ARMED = 60  # Poll interval when armed (SQS handles real-time)
 UPDATE_INTERVAL_DOOR_SENSORS = 5  # Fast poll interval for door sensors when disarmed
+# Right after a disarm, door contacts are polled for a while even when fast polling
+# is off or the proxy is used: realtime events can be missing then (#285).
+POST_DISARM_POLL_SECONDS = 600
+POST_DISARM_POLL_INTERVAL = 10
+# The REST data can keep the previous contact state for a while after a realtime
+# event (up to 23 s observed, #285): polled values are ignored for that contact
+# meanwhile. Beyond it, polling recovers a lost realtime event as before.
+REALTIME_CONTACT_GUARD_SECONDS = 45.0
 METADATA_REFRESH_INTERVAL = 3600  # Full metadata refresh every hour (rooms, users, groups)
 
 # Dispatcher signals
@@ -101,3 +120,6 @@ EVENT_AJAX_SMART_LOCK_DOORBELL: Final = "ajax_smart_lock_doorbell"
 EVENT_AJAX_SCENARIO_TRIGGERED: Final = "ajax_scenario_triggered"
 EVENT_AJAX_CAMERA_DETECTION: Final = "ajax_camera_detection"
 EVENT_AJAX_MOTIONCAM_PHOTO: Final = "ajax_motioncam_photo"
+# Any real-time event the integration has no handler for (#246): lets users
+# react to tags Ajax adds before they are supported.
+EVENT_AJAX_UNHANDLED_EVENT: Final = "ajax_unhandled_event"

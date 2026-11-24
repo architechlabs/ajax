@@ -6,6 +6,8 @@ Owns the bridges from internal state-changes to user-visible plumbing:
   (`ajax_armed`, `ajax_disarmed`, …) with source info when known.
 * `_create_event_from_state_change` — records a state-change in the
   per-space history and fans out to `_fire_security_state_event`.
+* `_create_sqs_notification` — raises the persistent notification on
+  the HA dashboard when notifications are enabled.
 * `_escape_markdown` — neutralises user-supplied text before inlining
   it into persistent-notification messages.
 
@@ -16,15 +18,24 @@ fields of its own.
 from __future__ import annotations
 
 import logging
+import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.components.persistent_notification import async_create
+
 from .const import (
+    CONF_MONITORED_SPACES,
+    CONF_NOTIFICATION_FILTER,
+    CONF_PERSISTENT_NOTIFICATION,
     EVENT_AJAX_ARMED,
     EVENT_AJAX_ARMED_HOME,
     EVENT_AJAX_ARMED_NIGHT,
     EVENT_AJAX_DISARMED,
     EVENT_AJAX_SECURITY_STATE_CHANGED,
+    NOTIFICATION_FILTER_ALARMS_ONLY,
+    NOTIFICATION_FILTER_ALL,
+    NOTIFICATION_FILTER_NONE,
 )
 from .event_codes import get_event_message, resolve_event_language
 from .models import GroupState, SecurityState
@@ -116,7 +127,7 @@ class AjaxEventDispatchMixin:
     ) -> None:
         """Record a security state change in the space history + fire the bus event.
 
-        The REST API is the single source of truth for the history; SQS/SSE
+        The REST API is the single source of truth for the history; SQS
         only trigger faster polling, they do not create entries directly.
         """
         action_map = {
@@ -152,3 +163,100 @@ class AjaxEventDispatchMixin:
     # Persistent notification
     # ------------------------------------------------------------------
 
+    async def _create_sqs_notification(
+        self, action: str, source_name: str, space_name: str, space_id: str = ""
+    ) -> None:
+        """Create a persistent notification in HA for an SQS event."""
+        options = self.config_entry.options if self.config_entry else {}
+
+        if not options.get(CONF_PERSISTENT_NOTIFICATION, True):
+            return
+
+        notification_filter = options.get(CONF_NOTIFICATION_FILTER, NOTIFICATION_FILTER_ALL)
+
+        if notification_filter == NOTIFICATION_FILTER_NONE:
+            return
+
+        # Per-space filter from the "notifications" options step. An empty
+        # selection means "all spaces" (backwards compatible with entries
+        # saved before the filter was enforced).
+        monitored_spaces = options.get(CONF_MONITORED_SPACES, [])
+        if monitored_spaces and space_id and space_id not in monitored_spaces:
+            return
+
+        # Arm/disarm are security events, not alarms.
+        is_arming_event = action in (
+            "armed",
+            "disarmed",
+            "night_mode",
+            "partially_armed",
+            # Legacy keys.
+            "nightmodeon",
+            "partiallyarmed",
+        )
+        if notification_filter == NOTIFICATION_FILTER_ALARMS_ONLY and is_arming_event:
+            return
+        # NOTIFICATION_FILTER_SECURITY_EVENTS and NOTIFICATION_FILTER_ALL show everything.
+
+        language = resolve_event_language(self.hass.config.language)
+
+        # Map SecurityState values to action keys in event_codes.
+        action_to_key = {
+            "armed": "armed",
+            "disarmed": "disarmed",
+            "night_mode": "night_mode",
+            "partially_armed": "partially_armed",
+            # Legacy keys for backwards compatibility.
+            "nightmodeon": "night_mode",
+            "partiallyarmed": "partially_armed",
+        }
+        action_key = action_to_key.get(action, action)
+        message = get_event_message(action_key, language)
+
+        _LOGGER.info(
+            "SQS notification: action=%s, action_key=%s, lang=%s, message=%s",
+            action,
+            action_key,
+            language,
+            message,
+        )
+
+        if source_name:
+            by_word = {
+                "fr": "par",
+                "en": "by",
+                "es": "por",
+                "de": "von",
+                "nl": "door",
+                "sv": "av",
+                "uk": "від",
+            }.get(language, "by")
+            # Persistent notifications render markdown — escape user-supplied
+            # source_name (from Ajax API) to neutralise [text](javascript:...)
+            # injection and stray markdown formatting.
+            safe_source = self._escape_markdown(source_name)
+            message = f"{message} {by_word} {safe_source}"
+
+        title = f"Ajax - {self._escape_markdown(space_name)}"
+
+        async_create(
+            self.hass,
+            message,
+            title=title,
+            notification_id=f"ajax_{action}_{space_name}_{source_name}_{int(time.time())}",
+        )
+
+    @staticmethod
+    def _escape_markdown(text: str | None) -> str:
+        """Escape markdown special characters in user-supplied text.
+
+        Persistent notifications in Home Assistant render as markdown, so
+        names coming from the Ajax API must be neutralised before being
+        interpolated into the message body.
+        """
+        if not text:
+            return ""
+        escaped = str(text)
+        for ch in ("\\", "`", "*", "_", "[", "]", "(", ")", "{", "}", "#", "+", "!", "|", "<", ">"):
+            escaped = escaped.replace(ch, f"\\{ch}")
+        return escaped

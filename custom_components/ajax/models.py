@@ -297,11 +297,11 @@ class AjaxSmartLock:
     name: str
     space_id: str
 
-    # Lock state (from legacy real-time events)
+    # Lock state (from SQS real-time events)
     # None = unknown (no event received yet), True = locked, False = unlocked
     is_locked: bool | None = None
 
-    # Door state (from legacy real-time events)
+    # Door state (from SQS real-time events)
     # None = unknown, True = open, False = closed
     is_door_open: bool | None = None
 
@@ -309,6 +309,9 @@ class AjaxSmartLock:
     last_event_tag: str | None = None
     last_event_time: datetime | None = None
     last_changed_by: str | None = None  # Who locked/unlocked (from additionalData)
+    # Name kept from upstream for merge compatibility: set on any real-time
+    # (SQS) smart-lock event, used for Yale cloud detection.
+    last_sse_event_time: datetime | None = None
 
     # Raw data from API
     raw_data: dict[str, Any] = field(default_factory=dict)
@@ -325,9 +328,16 @@ class AjaxSmartLock:
         2. No SSE events have been received
 
         LockBridge devices either:
+        - Are discovered via SQS events (no raw_data)
         - Have full API data including 'name' and 'type'
+        - Have received real-time events (last_sse_event_time is set)
         """
+        # Event-discovered device (LockBridge) - definitely not Yale cloud
         if not self.raw_data:
+            return False
+
+        # Received real-time events - this is a working LockBridge
+        if self.last_sse_event_time is not None:
             return False
 
         # Yale cloud locks return minimal API data (only 'id', no 'name'/'type')
